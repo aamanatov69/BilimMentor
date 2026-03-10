@@ -1,0 +1,372 @@
+import { UserRole } from "@prisma/client";
+import { Router } from "express";
+import { lmsController } from "../controllers/lmsController";
+import { asyncHandler } from "../middleware/asyncHandler";
+import { requireAuth, requireRole, verifyToken } from "../middleware/auth";
+import { authRateLimit, passwordResetRateLimit } from "../middleware/rateLimit";
+
+export const lmsRoutes = Router();
+
+lmsRoutes.get("/health", asyncHandler(lmsController.health));
+
+lmsRoutes.post(
+  "/api/auth/register",
+  authRateLimit,
+  asyncHandler(lmsController.register),
+);
+lmsRoutes.post(
+  "/api/auth/login",
+  authRateLimit,
+  asyncHandler(lmsController.login),
+);
+lmsRoutes.post("/api/auth/logout", asyncHandler(lmsController.logout));
+lmsRoutes.post(
+  "/api/auth/forgot-password",
+  passwordResetRateLimit,
+  asyncHandler(lmsController.forgotPassword),
+);
+lmsRoutes.post(
+  "/api/auth/reset-password",
+  asyncHandler(lmsController.resetPassword),
+);
+lmsRoutes.get(
+  "/api/auth/reset-password/validate",
+  asyncHandler(lmsController.validateResetPasswordToken),
+);
+lmsRoutes.get("/api/me", verifyToken, asyncHandler(lmsController.me));
+lmsRoutes.get("/api/public/courses", asyncHandler(lmsController.publicCourses));
+
+lmsRoutes.get(
+  "/api/courses",
+  requireAuth(),
+  requireRole([UserRole.student, UserRole.teacher, UserRole.admin]),
+  asyncHandler(lmsController.listCourses),
+);
+lmsRoutes.get(
+  "/api/courses/:id",
+  requireAuth(),
+  requireRole([UserRole.student, UserRole.teacher, UserRole.admin]),
+  asyncHandler(lmsController.getCourseById),
+);
+lmsRoutes.post(
+  "/api/courses",
+  requireAuth(),
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.createCourseLegacy),
+);
+
+lmsRoutes.get(
+  "/api/student/courses/discover",
+  requireAuth(),
+  requireRole([UserRole.student]),
+  asyncHandler(lmsController.discoverCourses),
+);
+lmsRoutes.get(
+  "/api/student/courses",
+  verifyToken,
+  requireRole([UserRole.student]),
+  asyncHandler(lmsController.studentCourses),
+);
+lmsRoutes.post(
+  "/api/student/courses/:id/lessons/:lessonId/completion",
+  verifyToken,
+  requireRole([UserRole.student]),
+  asyncHandler(lmsController.studentSetLessonCompletion),
+);
+lmsRoutes.get(
+  "/api/student/overview",
+  verifyToken,
+  requireRole([UserRole.student]),
+  asyncHandler(lmsController.studentDashboardOverview),
+);
+lmsRoutes.get(
+  "/api/student/assignments",
+  verifyToken,
+  requireRole([UserRole.student]),
+  asyncHandler(lmsController.studentAssignments),
+);
+lmsRoutes.get(
+  "/api/student/grades",
+  verifyToken,
+  requireRole([UserRole.student]),
+  asyncHandler(lmsController.studentGradesOverview),
+);
+lmsRoutes.post(
+  "/api/student/assignments/:id/submit",
+  verifyToken,
+  requireRole([UserRole.student]),
+  asyncHandler(lmsController.studentSubmitAssignment),
+);
+lmsRoutes.post(
+  "/api/student/course-access-requests",
+  verifyToken,
+  requireRole([UserRole.student]),
+  asyncHandler(lmsController.studentRequestCourseAccess),
+);
+lmsRoutes.get(
+  "/api/student/course-access-requests",
+  verifyToken,
+  requireRole([UserRole.student]),
+  asyncHandler(lmsController.studentListCourseAccessRequests),
+);
+
+lmsRoutes.get(
+  "/api/teacher/course-access-requests",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherListCourseAccessRequests),
+);
+lmsRoutes.get(
+  "/api/admin/course-access-requests",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminListCourseAccessRequests),
+);
+lmsRoutes.patch(
+  "/api/teacher/course-access-requests/:id",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherReviewCourseAccessRequest),
+);
+lmsRoutes.get(
+  "/api/teacher/courses",
+  verifyToken,
+  requireRole([UserRole.teacher, UserRole.admin]),
+  asyncHandler(lmsController.teacherCourses),
+);
+lmsRoutes.get(
+  "/api/teacher/courses/:id/details",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherCourseDetails),
+);
+lmsRoutes.post(
+  "/api/teacher/courses",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherCreateCourse),
+);
+lmsRoutes.patch(
+  "/api/teacher/courses/:id/visibility",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherSetCourseVisibility),
+);
+
+lmsRoutes.get(
+  "/api/notifications",
+  verifyToken,
+  requireRole([UserRole.student, UserRole.teacher, UserRole.admin]),
+  asyncHandler(lmsController.notifications),
+);
+lmsRoutes.get(
+  "/api/users",
+  verifyToken,
+  requireRole([UserRole.student, UserRole.teacher, UserRole.admin]),
+  asyncHandler(lmsController.listUsers),
+);
+lmsRoutes.get(
+  "/api/messages",
+  verifyToken,
+  requireRole([UserRole.student, UserRole.teacher, UserRole.admin]),
+  asyncHandler(lmsController.listMessages),
+);
+lmsRoutes.post(
+  "/api/messages",
+  verifyToken,
+  requireRole([UserRole.student, UserRole.teacher, UserRole.admin]),
+  asyncHandler(lmsController.sendMessage),
+);
+lmsRoutes.get(
+  "/api/admin/overview",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminOverview),
+);
+lmsRoutes.get(
+  "/api/admin/users",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminListUsers),
+);
+lmsRoutes.post(
+  "/api/admin/users",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminCreateUser),
+);
+lmsRoutes.put(
+  "/api/admin/users/:id",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminUpdateUser),
+);
+lmsRoutes.patch(
+  "/api/admin/users/:id/block",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminBlockUser),
+);
+lmsRoutes.patch(
+  "/api/admin/users/:id/unblock",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminUnblockUser),
+);
+lmsRoutes.patch(
+  "/api/admin/users/:id/password",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminResetUserPassword),
+);
+lmsRoutes.delete(
+  "/api/admin/users/:id",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminDeleteUser),
+);
+lmsRoutes.post(
+  "/api/admin/courses",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminCreateCourse),
+);
+lmsRoutes.put(
+  "/api/admin/courses/:id",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminUpdateCourse),
+);
+lmsRoutes.delete(
+  "/api/admin/courses/:id",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminDeleteCourse),
+);
+lmsRoutes.get(
+  "/api/admin/courses/:id/students",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminCourseStudents),
+);
+lmsRoutes.patch(
+  "/api/admin/courses/:id/students/:studentId",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminSetCourseStudentEnrollment),
+);
+lmsRoutes.get(
+  "/api/admin/reports",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminReports),
+);
+lmsRoutes.post(
+  "/api/admin/system/backup",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminRunBackup),
+);
+lmsRoutes.post(
+  "/api/admin/system/restore",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminRunRestore),
+);
+lmsRoutes.get(
+  "/api/admin/settings/overview",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminSettingsOverview),
+);
+
+lmsRoutes.put(
+  "/api/teacher/courses/:id",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherUpdateCourse),
+);
+lmsRoutes.delete(
+  "/api/teacher/courses/:id",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherDeleteCourse),
+);
+lmsRoutes.post(
+  "/api/teacher/courses/:id/assignments",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherCreateAssignment),
+);
+lmsRoutes.patch(
+  "/api/teacher/assignments/:id/deadline",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherUpdateAssignmentDeadline),
+);
+lmsRoutes.post(
+  "/api/teacher/courses/:id/materials",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherUploadMaterial),
+);
+lmsRoutes.post(
+  "/api/teacher/courses/:id/lessons",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherCreateLesson),
+);
+lmsRoutes.put(
+  "/api/teacher/courses/:id/lessons/:lessonId",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherUpdateLesson),
+);
+lmsRoutes.delete(
+  "/api/teacher/courses/:id/lessons/:lessonId",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherDeleteLesson),
+);
+lmsRoutes.post(
+  "/api/teacher/courses/:id/lessons/:lessonId/materials",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherAddLessonMaterial),
+);
+lmsRoutes.patch(
+  "/api/teacher/courses/:id/lessons/:lessonId/visibility",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherSetLessonVisibility),
+);
+lmsRoutes.post(
+  "/api/teacher/courses/:id/students/:studentId/message",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherMessageStudent),
+);
+lmsRoutes.patch(
+  "/api/teacher/submissions/:id/comment",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherCommentSubmission),
+);
+lmsRoutes.patch(
+  "/api/teacher/submissions/:id/grade",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherGradeSubmission),
+);
+lmsRoutes.get(
+  "/api/teacher/grades",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherGradesOverview),
+);
+lmsRoutes.get(
+  "/api/teacher/overview",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherDashboardOverview),
+);

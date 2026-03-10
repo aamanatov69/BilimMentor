@@ -1,0 +1,68 @@
+﻿"use client";
+
+import { ConfirmModal } from "@/components/ui/confirm-modal";
+import { useParams, useRouter } from "next/navigation";
+import { useState } from "react";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+function getTokenFromCookie() {
+  const tokenCookie = document.cookie
+    .split("; ")
+    .find((cookie) => cookie.startsWith("nexoraToken="));
+
+  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
+}
+
+export default function AdminDeleteCoursePage() {
+  const router = useRouter();
+  const params = useParams();
+  const id = String(params.id ?? "");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const remove = async () => {
+    const token = getTokenFromCookie();
+    if (!token) {
+      setError("Требуется авторизация");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_URL}/api/admin/courses/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        setError(data.message ?? "Не удалось удалить курс");
+        return;
+      }
+      router.replace("/dashboard/admin/courses");
+    } catch {
+      setError("Ошибка сети");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <main>
+      {error ? (
+        <p className="mx-auto mt-6 max-w-xl text-sm text-rose-600">{error}</p>
+      ) : null}
+      <ConfirmModal
+        isOpen
+        title="Удалить курс?"
+        description="Курс будет удален из системы без возможности восстановления."
+        confirmText="Подтвердить"
+        cancelText="Отмена"
+        isBusy={loading}
+        onConfirm={() => void remove()}
+        onCancel={() => router.replace("/dashboard/admin/courses")}
+      />
+    </main>
+  );
+}

@@ -1,0 +1,194 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  student
+  teacher
+  admin
+}
+
+enum CourseLevel {
+  beginner
+  intermediate
+  advanced
+}
+
+enum AccessRequestStatus {
+  pending
+  approved
+  rejected
+}
+
+enum NotificationType {
+  assignment_deadline
+  grade_posted
+  new_announcement
+  system_message
+}
+
+enum NotificationTargetRole {
+  student
+  teacher
+  admin
+  all
+}
+
+model User {
+  id                   String          @id @db.VarChar(64)
+  fullName             String
+  email                String          @unique
+  phone                String          @unique
+  passwordHash         String
+  role                 UserRole
+  isBlocked            Boolean         @default(false)
+  lastSeenAt           DateTime?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  taughtCourses        Course[]        @relation("CourseTeacher")
+  enrollments          Enrollment[]    @relation("EnrollmentStudent")
+  approvedEnrollments  Enrollment[]    @relation("EnrollmentApprover")
+  sentMessages         Message[]       @relation("MessageFrom")
+  receivedMessages     Message[]       @relation("MessageTo")
+  notifications        Notification[]
+  studentAccessRequests AccessRequest[] @relation("AccessRequestStudent")
+  teacherAccessRequests AccessRequest[] @relation("AccessRequestTeacher")
+  submissions          Submission[]
+  gradesGiven          Grade[]
+  passwordResetTokens  PasswordResetToken[]
+  lessonProgress       StudentLessonProgress[]
+}
+
+model PasswordResetToken {
+  id        String   @id @db.VarChar(64)
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  openedAt  DateTime?
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Course {
+  id             String         @id @db.VarChar(64)
+  title          String
+  category       String
+  description    String
+  level          CourseLevel
+  isPublished    Boolean        @default(false)
+  progress       Int            @default(0)
+  modules        Json?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  teacherId      String
+  teacher        User           @relation("CourseTeacher", fields: [teacherId], references: [id], onDelete: Restrict)
+  enrollments    Enrollment[]
+  accessRequests AccessRequest[]
+  assignments    Assignment[]
+  lessonProgress StudentLessonProgress[]
+}
+
+model Enrollment {
+  id                  String   @id @db.VarChar(64)
+  courseId            String
+  studentId           String
+  approvedByTeacherId String
+  approvedAt          DateTime
+  createdAt           DateTime @default(now())
+  course              Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student             User     @relation("EnrollmentStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  approvedByTeacher   User     @relation("EnrollmentApprover", fields: [approvedByTeacherId], references: [id], onDelete: Restrict)
+
+  @@unique([courseId, studentId])
+}
+
+model StudentLessonProgress {
+  id          String   @id @db.VarChar(64)
+  courseId    String
+  studentId   String
+  lessonId    String
+  completedAt DateTime @default(now())
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student     User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, studentId, lessonId])
+  @@index([studentId])
+  @@index([courseId])
+}
+
+model AccessRequest {
+  id         String              @id @db.VarChar(64)
+  courseId   String
+  studentId  String
+  teacherId  String
+  status     AccessRequestStatus @default(pending)
+  createdAt  DateTime            @default(now())
+  reviewedAt DateTime?
+  course     Course              @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student    User                @relation("AccessRequestStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  teacher    User                @relation("AccessRequestTeacher", fields: [teacherId], references: [id], onDelete: Restrict)
+}
+
+model Message {
+  id         String   @id @db.VarChar(64)
+  fromUserId String
+  toUserId   String
+  text       String
+  createdAt  DateTime @default(now())
+  fromUser   User     @relation("MessageFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser     User     @relation("MessageTo", fields: [toUserId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id         String                 @id @db.VarChar(64)
+  type       NotificationType
+  title      String
+  body       String
+  createdAt  DateTime               @default(now())
+  targetRole NotificationTargetRole
+  userId     String?
+  user       User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Assignment {
+  id          String        @id @db.VarChar(64)
+  title       String
+  description String?
+  courseId    String
+  lessonId    String?
+  dueAt       DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  course      Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  submissions Submission[]
+}
+
+model Submission {
+  id           String    @id @db.VarChar(64)
+  assignmentId String
+  studentId    String
+  content      String?
+  submittedAt  DateTime  @default(now())
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student      User      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  grade        Grade?
+}
+
+model Grade {
+  id           String     @id @db.VarChar(64)
+  submissionId String     @unique
+  gradedById   String
+  score        Decimal?   @db.Decimal(5, 2)
+  feedback     String?
+  createdAt    DateTime   @default(now())
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  gradedBy     User       @relation(fields: [gradedById], references: [id], onDelete: Restrict)
+}
