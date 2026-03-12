@@ -19,14 +19,6 @@ type GradeRow = {
   submittedAt: string;
 };
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function TeacherGradesPage() {
   const searchParams = useSearchParams();
   const targetSubmissionId = searchParams.get("submissionId") ?? "";
@@ -47,15 +39,10 @@ export default function TeacherGradesPage() {
 
   useEffect(() => {
     const loadGrades = async () => {
-      const token = getTokenFromCookie();
-      if (!token) {
-        setError("Требуется авторизация");
-        return;
-      }
 
       try {
         const response = await fetch(`${API_URL}/api/teacher/grades`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         });
         const data = (await response.json()) as {
           rows?: GradeRow[];
@@ -104,11 +91,6 @@ export default function TeacherGradesPage() {
   }, [targetSubmissionId, gradeRows.length]);
 
   const saveGrade = async (row: GradeRow) => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
 
     const rawValue = scoreDrafts[row.submissionId] ?? "";
     const score = Number(rawValue);
@@ -123,12 +105,11 @@ export default function TeacherGradesPage() {
 
     try {
       const response = await fetch(
-        `${API_URL}/api/teacher/submissions/${row.submissionId}/grade`,
-        {
+        `${API_URL}/api/teacher/submissions/${row.submissionId}/grade`, {
+          credentials: "include",
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             score,
@@ -181,24 +162,17 @@ export default function TeacherGradesPage() {
       return;
     }
 
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
-
     setError("");
     setCommentMessage("");
     setCommentSaving(true);
 
     try {
       const response = await fetch(
-        `${API_URL}/api/teacher/submissions/${commentModalRow.submissionId}/comment`,
-        {
+        `${API_URL}/api/teacher/submissions/${commentModalRow.submissionId}/comment`, {
+          credentials: "include",
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ comment: commentDraft }),
         },

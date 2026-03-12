@@ -36,29 +36,16 @@ type StudentGradesOverview = {
   }[];
 };
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function StudentGradesPage() {
   const [overview, setOverview] = useState<StudentGradesOverview | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     const loadData = async () => {
-      const token = getTokenFromCookie();
-      if (!token) {
-        setError("Требуется авторизация");
-        return;
-      }
 
       try {
         const response = await fetch(`${API_URL}/api/student/grades`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         });
         const data = (await response.json()) as StudentGradesOverview & {
           message?: string;

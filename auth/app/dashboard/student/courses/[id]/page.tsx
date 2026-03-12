@@ -43,10 +43,6 @@ type CourseLessonItem = {
   materials: CourseMaterialItem[];
 };
 
-function getTokenFromCookie() {
-  return "cookie-session";
-}
-
 function asString(value: unknown) {
   return typeof value === "string" ? value : "";
 }
@@ -173,12 +169,8 @@ export default function StudentCourseDetailsPage() {
   const [selectedLessonId, setSelectedLessonId] = useState("");
   const [busyMaterialId, setBusyMaterialId] = useState("");
   const [busyLessonId, setBusyLessonId] = useState("");
-  const [previewMaterialTitle, setPreviewMaterialTitle] = useState("");
-  const [previewMaterialUrl, setPreviewMaterialUrl] = useState("");
 
   const loadCourse = async () => {
-    const token = getTokenFromCookie();
-
     setError("");
     setLoading(true);
     try {
@@ -228,18 +220,12 @@ export default function StudentCourseDetailsPage() {
 
     setBusyMaterialId(item.id);
     try {
-      setPreviewMaterialTitle(item.title || "Материал");
-      setPreviewMaterialUrl(item.url);
+      window.open(item.url, "_blank", "noopener,noreferrer");
     } catch {
       setError("Не удалось открыть материал");
     } finally {
       setBusyMaterialId("");
     }
-  };
-
-  const closeMaterialPreview = () => {
-    setPreviewMaterialTitle("");
-    setPreviewMaterialUrl("");
   };
 
   const downloadMaterial = async (item: CourseMaterialItem) => {
@@ -278,8 +264,6 @@ export default function StudentCourseDetailsPage() {
   };
 
   const setLessonCompletion = async (lessonId: string, completed: boolean) => {
-    const token = getTokenFromCookie();
-
     setBusyLessonId(lessonId);
     setError("");
     try {
@@ -521,33 +505,6 @@ export default function StudentCourseDetailsPage() {
           </div>
         ) : null}
       </main>
-
-      {previewMaterialUrl ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
-          <div className="flex h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-              <p className="truncate pr-3 text-sm font-semibold text-slate-900">
-                {previewMaterialTitle}
-              </p>
-              <button
-                type="button"
-                onClick={closeMaterialPreview}
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-              >
-                Закрыть
-              </button>
-            </div>
-
-            <div className="h-full bg-slate-100">
-              <iframe
-                src={previewMaterialUrl}
-                title={previewMaterialTitle || "Предпросмотр материала"}
-                className="h-full w-full"
-              />
-            </div>
-          </div>
-        </div>
-      ) : null}
     </>
   );
 }

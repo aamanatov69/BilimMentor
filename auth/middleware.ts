@@ -7,16 +7,36 @@ type TokenPayload = {
   role: UserRole;
 };
 
+const disallowedProductionSecrets = new Set([
+  "change-me-in-production",
+  "changeme",
+  "secret",
+  "default",
+]);
+
+function isWeakJwtSecret(secret: string) {
+  if (secret.length < 32) {
+    return true;
+  }
+
+  return disallowedProductionSecrets.has(secret.trim().toLowerCase());
+}
+
 const roleToPath: Record<UserRole, string> = {
   admin: "/dashboard/admin",
   teacher: "/dashboard/teacher",
   student: "/dashboard/student",
 };
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET?.trim();
 if (!JWT_SECRET) {
   throw new Error("JWT_SECRET is required for dashboard middleware");
 }
+
+if (process.env.NODE_ENV === "production" && isWeakJwtSecret(JWT_SECRET)) {
+  throw new Error("JWT_SECRET is too weak for production");
+}
+
 const secret = new TextEncoder().encode(JWT_SECRET);
 
 async function getTokenPayload(

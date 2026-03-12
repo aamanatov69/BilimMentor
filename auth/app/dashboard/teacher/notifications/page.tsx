@@ -24,29 +24,16 @@ type NotificationItem = {
   createdAt: string;
 };
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function TeacherNotificationsPage() {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
 
     const loadNotifications = async () => {
       try {
         const response = await fetch(`${API_URL}/api/notifications`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         });
         const data = (await response.json()) as {
           notifications?: NotificationItem[];

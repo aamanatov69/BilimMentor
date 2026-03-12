@@ -24,14 +24,6 @@ type ReportItem = {
   students: number;
 };
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function AdminCoursesPage() {
   const [courses, setCourses] = useState<CourseItem[]>([]);
   const [teachers, setTeachers] = useState<TeacherItem[]>([]);
@@ -44,22 +36,16 @@ export default function AdminCoursesPage() {
   const [isDeletingCourse, setIsDeletingCourse] = useState(false);
 
   const loadData = async () => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
-
     try {
       const [coursesRes, usersRes, reportsRes] = await Promise.all([
         fetch(`${API_URL}/api/courses`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         }),
         fetch(`${API_URL}/api/admin/users`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         }),
         fetch(`${API_URL}/api/admin/reports`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         }),
       ]);
 
@@ -115,9 +101,7 @@ export default function AdminCoursesPage() {
   };
 
   const deleteCourse = async () => {
-    const token = getTokenFromCookie();
-    if (!token || !deleteCourseId) {
-      setError("Требуется авторизация");
+    if (!deleteCourseId) {
       return;
     }
 
@@ -127,8 +111,8 @@ export default function AdminCoursesPage() {
       const response = await fetch(
         `${API_URL}/api/admin/courses/${deleteCourseId}`,
         {
+          credentials: "include",
           method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
 

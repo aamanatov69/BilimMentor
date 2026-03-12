@@ -9,14 +9,6 @@ type ReportResponse = {
   coursesByCategory?: Record<string, number>;
 };
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function AdminSystemPage() {
   const [apiOnline, setApiOnline] = useState(false);
   const [dbSyncedAt, setDbSyncedAt] = useState("");
@@ -27,17 +19,12 @@ export default function AdminSystemPage() {
 
   useEffect(() => {
     const loadSystem = async () => {
-      const token = getTokenFromCookie();
-      if (!token) {
-        setError("Требуется авторизация");
-        return;
-      }
 
       try {
         const [healthRes, reportsRes] = await Promise.all([
           fetch(`${API_URL}/health`),
           fetch(`${API_URL}/api/admin/reports`, {
-            headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
           }),
         ]);
 

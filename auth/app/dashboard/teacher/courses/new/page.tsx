@@ -16,14 +16,6 @@ type LessonUploadFile = {
   dataBase64: string;
 };
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -105,7 +97,6 @@ export default function NewTeacherCoursePage() {
   };
 
   const addMaterialToLesson = async (
-    token: string,
     courseId: string,
     lessonId: string,
     payload: Record<string, unknown>,
@@ -113,10 +104,10 @@ export default function NewTeacherCoursePage() {
     const response = await fetch(
       `${API_URL}/api/teacher/courses/${courseId}/lessons/${lessonId}/materials`,
       {
+        credentials: "include",
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       },
@@ -131,12 +122,6 @@ export default function NewTeacherCoursePage() {
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
-
     if (!lessonTitle.trim()) {
       setError("Введите название урока");
       return;
@@ -149,10 +134,10 @@ export default function NewTeacherCoursePage() {
       const createCourseResponse = await fetch(
         `${API_URL}/api/teacher/courses`,
         {
+          credentials: "include",
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             title: courseTitle.trim(),
@@ -182,10 +167,10 @@ export default function NewTeacherCoursePage() {
       const createLessonResponse = await fetch(
         `${API_URL}/api/teacher/courses/${courseId}/lessons`,
         {
+          credentials: "include",
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             title: lessonTitle.trim(),
@@ -211,7 +196,7 @@ export default function NewTeacherCoursePage() {
       }
 
       if (lessonLecture.trim()) {
-        await addMaterialToLesson(token, courseId, lessonId, {
+        await addMaterialToLesson(courseId, lessonId, {
           type: "lecture",
           title: `Лекция: ${lessonTitle.trim()}`,
           text: lessonLecture.trim(),
@@ -223,7 +208,7 @@ export default function NewTeacherCoursePage() {
         .filter((item) => item.length > 0);
 
       for (const [index, link] of links.entries()) {
-        await addMaterialToLesson(token, courseId, lessonId, {
+        await addMaterialToLesson(courseId, lessonId, {
           type: "link",
           title: `Ссылка ${index + 1}`,
           url: link,
@@ -239,7 +224,7 @@ export default function NewTeacherCoursePage() {
           dataBase64,
         };
 
-        await addMaterialToLesson(token, courseId, lessonId, {
+        await addMaterialToLesson(courseId, lessonId, {
           type: detectMaterialTypeFromMime(payloadFile.type),
           title: file.name,
           file: payloadFile,
@@ -250,10 +235,10 @@ export default function NewTeacherCoursePage() {
         const assignmentResponse = await fetch(
           `${API_URL}/api/teacher/courses/${courseId}/assignments`,
           {
+            credentials: "include",
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
               title: assignmentText.trim().slice(0, 120),

@@ -38,14 +38,6 @@ type AttachmentDraft = SubmissionAttachment & {
   dataBase64: string;
 };
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 function fileToBase64(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -96,15 +88,10 @@ export default function StudentAssignmentsPage() {
 
   useEffect(() => {
     const loadAssignments = async () => {
-      const token = getTokenFromCookie();
-      if (!token) {
-        setError("Требуется авторизация");
-        return;
-      }
 
       try {
         const response = await fetch(`${API_URL}/api/student/assignments`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         });
 
         const data = (await response.json()) as {
@@ -172,11 +159,6 @@ export default function StudentAssignmentsPage() {
   };
 
   const submitAssignment = async (assignment: StudentAssignment) => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
 
     const text = (textDrafts[assignment.id] ?? "").trim();
     const formula = (formulaDrafts[assignment.id] ?? "").trim();
@@ -214,12 +196,11 @@ export default function StudentAssignmentsPage() {
       }
 
       const response = await fetch(
-        `${API_URL}/api/student/assignments/${assignment.id}/submit`,
-        {
+        `${API_URL}/api/student/assignments/${assignment.id}/submit`, {
+          credentials: "include",
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify(body),
         },

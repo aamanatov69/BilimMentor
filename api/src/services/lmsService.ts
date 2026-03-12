@@ -84,6 +84,56 @@ function userPublic(user: {
   };
 }
 
+function normalizeLegacyNotification<
+  T extends {
+    type: NotificationType;
+    title: string;
+    body: string;
+  },
+>(notification: T): T {
+  const isGenericTitle =
+    notification.title === "Системное уведомление" ||
+    notification.title === "Enabled" ||
+    notification.title === "Disabled";
+  const isGenericBody =
+    notification.body === "Действие выполнено" ||
+    notification.body === "Действие выполнено.";
+
+  if (!isGenericTitle && !isGenericBody) {
+    return notification;
+  }
+
+  if (notification.type === NotificationType.new_announcement) {
+    return {
+      ...notification,
+      title: "Новое объявление",
+      body: "Опубликовано новое объявление или обновление курса.",
+    };
+  }
+
+  if (notification.type === NotificationType.grade_posted) {
+    return {
+      ...notification,
+      title: "Оценка опубликована",
+      body: "Преподаватель опубликовал оценку по одной из ваших работ.",
+    };
+  }
+
+  if (notification.type === NotificationType.assignment_deadline) {
+    return {
+      ...notification,
+      title: "Дедлайн задания",
+      body: "Добавлено новое задание или обновлен срок его сдачи.",
+    };
+  }
+
+  return {
+    ...notification,
+    title: "Системное сообщение",
+    body: "Выполнено системное действие. Откройте связанный раздел для деталей.",
+  };
+}
+
 function readModules(modules: unknown) {
   return Array.isArray(modules) ? modules : [];
 }
@@ -241,7 +291,11 @@ async function getPasswordResetTokenOrThrow(rawToken?: string) {
 
   ensure(resetToken, 400, "Некорректный запрос");
   ensure(!resetToken.usedAt, 400, "Некорректный запрос");
-  ensure(resetToken.expiresAt.getTime() > Date.now(), 400, "Операция недоступна");
+  ensure(
+    resetToken.expiresAt.getTime() > Date.now(),
+    400,
+    "Операция недоступна",
+  );
 
   return resetToken;
 }
@@ -285,8 +339,8 @@ async function notifyStudentsAboutPublishedCourse(params: {
     data: {
       id: await lmsRepository.nextNotificationId(),
       type: NotificationType.new_announcement,
-      title: "Системное уведомление",
-      body: `Действие выполнено`,
+      title: "Опубликован новый курс",
+      body: `Курс "${params.courseTitle}" опубликован и доступен студентам.`,
       targetRole: NotificationTargetRole.student,
       userId: null,
     },
@@ -309,10 +363,10 @@ async function notifyStudentsAboutNewAssignment(params: {
       data: {
         id: await lmsRepository.nextNotificationId(),
         type: NotificationType.assignment_deadline,
-        title: "Системное уведомление",
+        title: "Добавлено новое задание",
         body: params.dueAt
-          ? `Действие выполнено`
-          : `${params.courseTitle}: ${params.assignmentTitle}`,
+          ? `${params.courseTitle}: "${params.assignmentTitle}". Срок сдачи: ${params.dueAt.toLocaleString("ru-RU")}.`
+          : `${params.courseTitle}: добавлено задание "${params.assignmentTitle}".`,
         targetRole: NotificationTargetRole.student,
         userId: enrollment.studentId,
       },
@@ -454,7 +508,7 @@ export async function requestPasswordReset(input: { email?: string }) {
   });
 
   return {
-    message: "Успешно",
+    message: "Вам на почту выслана ссылка для сброса пароля",
   };
 }
 
@@ -486,8 +540,8 @@ export async function resetPasswordByToken(input: {
       data: {
         id: await lmsRepository.nextNotificationId(),
         type: NotificationType.system_message,
-        title: "Системное уведомление",
-        body: `РЎР±СЂРѕСЃ РїР°СЂРѕР»СЏ РІС‹РїРѕР»РЅРµРЅ: ${resetToken.user.fullName} (${resetToken.user.email})`,
+        title: "Сброс пароля выполнен",
+        body: `Сброс пароля выполнен: ${resetToken.user.fullName} (${resetToken.user.email})`,
         targetRole: NotificationTargetRole.admin,
         userId: null,
       },
@@ -708,7 +762,11 @@ export async function listNotifications(userId?: string) {
     orderBy: { createdAt: "desc" },
   });
 
-  return { notifications };
+  return {
+    notifications: notifications.map((item) =>
+      normalizeLegacyNotification(item),
+    ),
+  };
 }
 
 export async function listUsersForMessaging(
@@ -987,7 +1045,25 @@ export async function adminDeleteUser(
   ensure(targetUser, 404, "Ресурс не найден");
   ensure(targetUser.id !== currentUser.id, 400, "Операция недоступна");
 
-  await lmsRepository.prisma.user.delete({ where: { id: userId } });
+  await lmsRepository.prisma.$transaction([
+    lmsRepository.prisma.course.updateMany({
+      where: { teacherId: userId },
+      data: { teacherId: currentUser.id },
+    }),
+    lmsRepository.prisma.enrollment.updateMany({
+      where: { approvedByTeacherId: userId },
+      data: { approvedByTeacherId: currentUser.id },
+    }),
+    lmsRepository.prisma.accessRequest.updateMany({
+      where: { teacherId: userId },
+      data: { teacherId: currentUser.id },
+    }),
+    lmsRepository.prisma.grade.updateMany({
+      where: { gradedById: userId },
+      data: { gradedById: currentUser.id },
+    }),
+    lmsRepository.prisma.user.delete({ where: { id: userId } }),
+  ]);
 
   return {
     message: "Успешно",
@@ -1130,7 +1206,11 @@ export async function adminUpdateCourse(
   ensure(course, 404, "Ресурс не найден");
 
   if (typeof input.title === "string" || typeof input.name === "string") {
-    ensure((input.title ?? input.name ?? "").trim(), 400, "Операция недоступна");
+    ensure(
+      (input.title ?? input.name ?? "").trim(),
+      400,
+      "Операция недоступна",
+    );
   }
 
   if (typeof input.category === "string") {
@@ -1252,7 +1332,11 @@ export async function adminSetCourseStudentEnrollment(
   ]);
 
   ensure(course, 404, "Ресурс не найден");
-  ensure(student && student.role === UserRole.student, 404, "Операция недоступна");
+  ensure(
+    student && student.role === UserRole.student,
+    404,
+    "Операция недоступна",
+  );
 
   const existingEnrollment = await lmsRepository.prisma.enrollment.findUnique({
     where: {
@@ -1491,8 +1575,8 @@ export async function studentRequestCourseAccess(
     data: {
       id: await lmsRepository.nextNotificationId(),
       type: NotificationType.system_message,
-      title: "Системное уведомление",
-      body: `Действие выполнено`,
+      title: "Новая заявка на доступ к курсу",
+      body: `Студент ${currentUser.fullName} запросил доступ к курсу "${course.title}".`,
       targetRole: NotificationTargetRole.teacher,
       userId: course.teacherId,
     },
@@ -1721,7 +1805,11 @@ export async function teacherReviewCourseAccessRequest(
     where: { id: requestId },
   });
   ensure(accessRequest, 404, "Ресурс не найден");
-  ensure(accessRequest.teacherId === currentUser.id, 403, "Операция недоступна");
+  ensure(
+    accessRequest.teacherId === currentUser.id,
+    403,
+    "Операция недоступна",
+  );
   ensure(
     accessRequest.status === AccessRequestStatus.pending,
     409,
@@ -1742,7 +1830,7 @@ export async function teacherReviewCourseAccessRequest(
     }),
     lmsRepository.prisma.user.findUnique({
       where: { id: accessRequest.studentId },
-      select: { id: true },
+      select: { id: true, fullName: true },
     }),
   ]);
   ensure(requestCourse && requestStudent, 404, "Операция недоступна");
@@ -1782,11 +1870,14 @@ export async function teacherReviewCourseAccessRequest(
       data: {
         id: await lmsRepository.nextNotificationId(),
         type: NotificationType.system_message,
-        title: status === AccessRequestStatus.approved ? "Enabled" : "Disabled",
+        title:
+          status === AccessRequestStatus.approved
+            ? "Заявка одобрена"
+            : "Заявка отклонена",
         body:
           status === AccessRequestStatus.approved
-            ? `Действие выполнено.`
-            : `Действие выполнено.`,
+            ? `Доступ к курсу "${requestCourse.title}" одобрен преподавателем.`
+            : `Заявка на курс "${requestCourse.title}" отклонена преподавателем.`,
         targetRole: NotificationTargetRole.student,
         userId: requestStudent.id,
       },
@@ -2756,7 +2847,11 @@ export async function teacherMessageStudent(
 
   ensure(course, 404, "Ресурс не найден");
   ensure(course.teacherId === currentUser.id, 403, "Операция недоступна");
-  ensure(student && student.role === UserRole.student, 404, "Операция недоступна");
+  ensure(
+    student && student.role === UserRole.student,
+    404,
+    "Операция недоступна",
+  );
 
   return sendMessage(currentUser.id, { toUserId: studentId, message });
 }
@@ -2857,8 +2952,8 @@ export async function teacherGradeSubmission(
     data: {
       id: await lmsRepository.nextNotificationId(),
       type: NotificationType.grade_posted,
-      title: "Системное уведомление",
-      body: `Действие выполнено`,
+      title: "Оценка опубликована",
+      body: `По заданию "${submission.assignment.title}" в курсе "${submission.assignment.course.title}" выставлена оценка: ${scoreValue}.`,
       targetRole: NotificationTargetRole.student,
       userId: submission.studentId,
     },
@@ -3447,8 +3542,8 @@ export async function studentSubmitAssignment(
     data: {
       id: await lmsRepository.nextNotificationId(),
       type: NotificationType.system_message,
-      title: "Системное уведомление",
-      body: `Действие выполнено`,
+      title: "Новая сдача задания",
+      body: `Студент ${currentUser.fullName} отправил решение по заданию "${assignment.title}" в курсе "${assignment.course.title}".`,
       targetRole: NotificationTargetRole.teacher,
       userId: assignment.course.teacherId,
     },
@@ -3580,4 +3675,3 @@ export async function studentGradesOverview(userId?: string) {
     assignmentGrades,
   };
 }
-

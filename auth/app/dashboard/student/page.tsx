@@ -54,14 +54,6 @@ type StudentOverview = {
   }[];
 };
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function StudentDashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<StudentUser | null>(null);
@@ -69,20 +61,15 @@ export default function StudentDashboardPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      router.replace("/login");
-      return;
-    }
 
     const loadData = async () => {
       try {
         const [meRes, overviewRes] = await Promise.all([
           fetch(`${API_URL}/api/me`, {
-            headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
           }),
           fetch(`${API_URL}/api/student/overview`, {
-            headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
           }),
         ]);
 

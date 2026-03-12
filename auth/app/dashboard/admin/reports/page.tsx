@@ -22,14 +22,6 @@ type ReportResponse = {
   }[];
 };
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function AdminReportsPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -37,17 +29,12 @@ export default function AdminReportsPage() {
   const [report, setReport] = useState<ReportResponse | null>(null);
 
   const filterByDate = async () => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
 
     setError("");
 
     try {
       const response = await fetch(`${API_URL}/api/admin/reports`, {
-        headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
       });
       const data = (await response.json()) as ReportResponse & {
         message?: string;

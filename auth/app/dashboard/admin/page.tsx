@@ -21,34 +21,21 @@ type ReportSummary = {
   accessRequestsPending: number;
 };
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<AdminUser | null>(null);
   const [summary, setSummary] = useState<ReportSummary | null>(null);
 
   useEffect(() => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      router.replace("/login");
-      return;
-    }
 
     const loadData = async () => {
       try {
         const [meRes, reportsRes] = await Promise.all([
           fetch(`${API_URL}/api/me`, {
-            headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
           }),
           fetch(`${API_URL}/api/admin/reports`, {
-            headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
           }),
         ]);
 

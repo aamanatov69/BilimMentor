@@ -23,14 +23,6 @@ type TeacherOverview = {
   };
 };
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function TeacherDashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<TeacherUser | null>(null);
@@ -38,20 +30,14 @@ export default function TeacherDashboardPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      router.replace("/login");
-      return;
-    }
-
     const loadData = async () => {
       try {
         const [meRes, overviewRes] = await Promise.all([
           fetch(`${API_URL}/api/me`, {
-            headers: { Authorization: `Bearer ${token}` },
+            credentials: "include",
           }),
           fetch(`${API_URL}/api/teacher/overview`, {
-            headers: { Authorization: `Bearer ${token}` },
+            credentials: "include",
           }),
         ]);
 
@@ -124,7 +110,9 @@ export default function TeacherDashboardPage() {
           </Link>
         </article>
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">Студенты, записанные на курсы</p>
+          <p className="text-xs text-slate-500">
+            Студенты, записанные на курсы
+          </p>
           <p className="mt-2 text-3xl font-semibold text-emerald-600">
             {overview?.summary.studentsEnrolled ?? 0}
           </p>

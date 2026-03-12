@@ -6,14 +6,6 @@ import { useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function CommentSubmissionPage() {
   const params = useParams();
   const id = String(params.id ?? "");
@@ -24,23 +16,17 @@ export default function CommentSubmissionPage() {
   const [loading, setLoading] = useState(false);
 
   const save = async () => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
 
     setLoading(true);
     setError("");
     setMessage("");
     try {
       const response = await fetch(
-        `${API_URL}/api/teacher/submissions/${submissionId}/comment`,
-        {
+        `${API_URL}/api/teacher/submissions/${submissionId}/comment`, {
+          credentials: "include",
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ comment }),
         },

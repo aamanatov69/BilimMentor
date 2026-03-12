@@ -25,31 +25,17 @@ type AccessRequest = {
   };
 };
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function AdminRequestsPage() {
   const [pendingRequests, setPendingRequests] = useState<AccessRequest[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
     const loadRequests = async () => {
-      const token = getTokenFromCookie();
-      if (!token) {
-        setError("Требуется авторизация");
-        return;
-      }
 
       try {
         const response = await fetch(
-          `${API_URL}/api/admin/course-access-requests?status=pending`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
+          `${API_URL}/api/admin/course-access-requests?status=pending`, {
+          credentials: "include",
           },
         );
         const data = (await response.json()) as {

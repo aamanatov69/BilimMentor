@@ -42,35 +42,22 @@ type AccessRequest = {
   student?: { id: string; fullName: string; email: string };
 };
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function TeacherStudentsPage() {
   const [students, setStudents] = useState<CourseStudentCard[]>([]);
   const [error, setError] = useState("");
   const [busyRequestId, setBusyRequestId] = useState("");
 
   const loadStudents = async () => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
 
     setError("");
 
     try {
       const [coursesRes, pendingRes] = await Promise.all([
         fetch(`${API_URL}/api/teacher/courses`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         }),
         fetch(`${API_URL}/api/teacher/course-access-requests?status=pending`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         }),
       ]);
 
@@ -96,9 +83,8 @@ export default function TeacherStudentsPage() {
       const detailResponses = await Promise.all(
         courseList.map(async (course) => {
           const response = await fetch(
-            `${API_URL}/api/teacher/courses/${course.id}/details`,
-            {
-              headers: { Authorization: `Bearer ${token}` },
+            `${API_URL}/api/teacher/courses/${course.id}/details`, {
+          credentials: "include",
             },
           );
 
@@ -176,22 +162,16 @@ export default function TeacherStudentsPage() {
     requestId: string,
     status: "approved" | "rejected",
   ) => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
 
     setBusyRequestId(requestId);
     setError("");
     try {
       const response = await fetch(
-        `${API_URL}/api/teacher/course-access-requests/${requestId}`,
-        {
+        `${API_URL}/api/teacher/course-access-requests/${requestId}`, {
+          credentials: "include",
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ status }),
         },

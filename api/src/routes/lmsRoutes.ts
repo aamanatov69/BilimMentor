@@ -27,10 +27,12 @@ lmsRoutes.post(
 );
 lmsRoutes.post(
   "/api/auth/reset-password",
+  passwordResetRateLimit,
   asyncHandler(lmsController.resetPassword),
 );
 lmsRoutes.get(
   "/api/auth/reset-password/validate",
+  passwordResetRateLimit,
   asyncHandler(lmsController.validateResetPasswordToken),
 );
 lmsRoutes.get("/api/me", verifyToken, asyncHandler(lmsController.me));

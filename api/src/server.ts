@@ -5,7 +5,14 @@ import { errorHandler } from "./middleware/errorHandler";
 import { lmsRoutes } from "./routes/lmsRoutes";
 
 export const app = express();
-const PORT = Number(process.env.PORT?? 4000);
+const PORT = Number(process.env.PORT ?? 4000);
+
+const trustProxy = process.env.TRUST_PROXY;
+if (trustProxy) {
+  app.set("trust proxy", trustProxy);
+}
+
+app.disable("x-powered-by");
 
 function getAllowedOrigins() {
   const rawOrigins = process.env.CORS_ALLOWED_ORIGINS;
@@ -13,7 +20,10 @@ function getAllowedOrigins() {
     return ["http://localhost:3000"];
   }
 
-  return rawOrigins.split(",").map((origin) => origin.trim()).filter(Boolean);
+  return rawOrigins
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 }
 
 const allowedOrigins = getAllowedOrigins();
@@ -51,10 +61,9 @@ export async function bootstrap() {
   });
 }
 
-if (process.env.NODE_ENV!== "test") {
+if (process.env.NODE_ENV !== "test") {
   bootstrap().catch((error) => {
     console.error("Failed to start API", error);
     process.exit(1);
   });
 }
-

@@ -16,28 +16,11 @@ function setAuthCookie(res: Response, token: string) {
     path: "/",
     maxAge: authCookieMaxAgeMs,
   });
-
-  // Legacy cookie for old dashboard pages that still read token from document.cookie.
-  // Keep it during migration to credential-based requests.
-  res.cookie("nexoraToken", token, {
-    httpOnly: false,
-    secure: isSecureCookie(),
-    sameSite: "lax",
-    path: "/",
-    maxAge: authCookieMaxAgeMs,
-  });
 }
 
 function clearAuthCookie(res: Response) {
   res.clearCookie("bilimMentorToken", {
     httpOnly: true,
-    secure: isSecureCookie(),
-    sameSite: "lax",
-    path: "/",
-  });
-
-  res.clearCookie("nexoraToken", {
-    httpOnly: false,
     secure: isSecureCookie(),
     sameSite: "lax",
     path: "/",

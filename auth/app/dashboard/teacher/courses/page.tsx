@@ -23,14 +23,6 @@ function getCourseLevelLabel(level: CourseItem["level"]) {
   return "Продвинутый";
 }
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function TeacherCoursesPage() {
   const searchParams = useSearchParams();
   const [courses, setCourses] = useState<CourseItem[]>([]);
@@ -47,14 +39,8 @@ export default function TeacherCoursesPage() {
   const isCreated = searchParams.get("created") === "1";
 
   const loadCourses = async () => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
-
     const response = await fetch(`${API_URL}/api/teacher/courses`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
 
     const data = (await response.json()) as {
@@ -75,12 +61,6 @@ export default function TeacherCoursesPage() {
   }, []);
 
   const updateVisibility = async (courseId: string, isPublished: boolean) => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
-
     setBusyCourseId(courseId);
     setError("");
 
@@ -88,10 +68,10 @@ export default function TeacherCoursesPage() {
       const response = await fetch(
         `${API_URL}/api/teacher/courses/${courseId}/visibility`,
         {
+          credentials: "include",
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ isPublished }),
         },
@@ -136,9 +116,7 @@ export default function TeacherCoursesPage() {
   };
 
   const saveCourseEdit = async () => {
-    const token = getTokenFromCookie();
-    if (!token || !editCourseId) {
-      setEditError("Требуется авторизация");
+    if (!editCourseId) {
       return;
     }
 
@@ -155,10 +133,10 @@ export default function TeacherCoursesPage() {
       const response = await fetch(
         `${API_URL}/api/teacher/courses/${editCourseId}`,
         {
+          credentials: "include",
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             title: normalizedTitle,
@@ -201,9 +179,7 @@ export default function TeacherCoursesPage() {
   };
 
   const deleteCourse = async () => {
-    const token = getTokenFromCookie();
-    if (!token || !deleteCourseId) {
-      setError("Требуется авторизация");
+    if (!deleteCourseId) {
       return;
     }
 
@@ -213,8 +189,8 @@ export default function TeacherCoursesPage() {
       const response = await fetch(
         `${API_URL}/api/teacher/courses/${deleteCourseId}`,
         {
+          credentials: "include",
           method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
 

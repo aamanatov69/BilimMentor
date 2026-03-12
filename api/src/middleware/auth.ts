@@ -19,11 +19,6 @@ function getTokenFromCookieHeader(cookieHeader?: string) {
         trimmedCookie.slice("bilimMentorToken=".length),
       );
     }
-
-    // Backward compatibility for old cookie name during transition.
-    if (trimmedCookie.startsWith("nexoraToken=")) {
-      return decodeURIComponent(trimmedCookie.slice("nexoraToken=".length));
-    }
   }
 
   return undefined;

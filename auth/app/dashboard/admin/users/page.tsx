@@ -18,14 +18,6 @@ type AdminUser = {
 type UserAction = "block" | "unblock";
 type AdminRole = AdminUser["role"];
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [error, setError] = useState("");
@@ -63,15 +55,9 @@ export default function AdminUsersPage() {
   };
 
   const loadUsers = async () => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
-
     try {
       const response = await fetch(`${API_URL}/api/admin/users`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       });
 
       const data = (await response.json()) as {
@@ -115,9 +101,7 @@ export default function AdminUsersPage() {
   };
 
   const deleteUser = async () => {
-    const token = getTokenFromCookie();
-    if (!token || !deleteUserId) {
-      setError("Требуется авторизация");
+    if (!deleteUserId) {
       return;
     }
 
@@ -127,8 +111,8 @@ export default function AdminUsersPage() {
       const response = await fetch(
         `${API_URL}/api/admin/users/${deleteUserId}`,
         {
+          credentials: "include",
           method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
       const data = (await response.json()) as { message?: string };
@@ -169,9 +153,7 @@ export default function AdminUsersPage() {
   };
 
   const changeUserStatus = async () => {
-    const token = getTokenFromCookie();
-    if (!token || !actionUserId || !actionType) {
-      setError("Требуется авторизация");
+    if (!actionUserId || !actionType) {
       return;
     }
 
@@ -188,8 +170,8 @@ export default function AdminUsersPage() {
       const response = await fetch(
         `${API_URL}/api/admin/users/${actionUserId}/${actionPath}`,
         {
+          credentials: "include",
           method: "PATCH",
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
       const data = (await response.json()) as { message?: string };
@@ -226,9 +208,7 @@ export default function AdminUsersPage() {
   };
 
   const saveRole = async () => {
-    const token = getTokenFromCookie();
-    if (!token || !roleUserId) {
-      setError("Требуется авторизация");
+    if (!roleUserId) {
       return;
     }
 
@@ -237,10 +217,10 @@ export default function AdminUsersPage() {
 
     try {
       const response = await fetch(`${API_URL}/api/admin/users/${roleUserId}`, {
+        credentials: "include",
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ role: newRole }),
       });
@@ -280,9 +260,7 @@ export default function AdminUsersPage() {
   };
 
   const resetPassword = async () => {
-    const token = getTokenFromCookie();
-    if (!token || !passwordUserId) {
-      setError("Требуется авторизация");
+    if (!passwordUserId) {
       return;
     }
 
@@ -294,10 +272,10 @@ export default function AdminUsersPage() {
       const response = await fetch(
         `${API_URL}/api/admin/users/${passwordUserId}/password`,
         {
+          credentials: "include",
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ password: newPassword }),
         },
@@ -342,12 +320,6 @@ export default function AdminUsersPage() {
   };
 
   const createUser = async () => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setCreateError("Требуется авторизация");
-      return;
-    }
-
     const fullName = createFullName.trim();
     const email = createEmail.trim();
     const phone = createPhone.trim();
@@ -364,10 +336,10 @@ export default function AdminUsersPage() {
 
     try {
       const response = await fetch(`${API_URL}/api/admin/users`, {
+        credentials: "include",
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           fullName,

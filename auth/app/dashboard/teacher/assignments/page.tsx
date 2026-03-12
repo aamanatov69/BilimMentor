@@ -28,14 +28,6 @@ type AssignmentAnswerRow = {
   answerAttachments?: AttachmentItem[];
 };
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 function formatSize(bytes?: number) {
   const value = Number(bytes) || 0;
   if (value < 1024) return `${value} B`;
@@ -143,15 +135,10 @@ export default function TeacherAssignmentsPage() {
 
   useEffect(() => {
     const loadRows = async () => {
-      const token = getTokenFromCookie();
-      if (!token) {
-        setError("Требуется авторизация");
-        return;
-      }
 
       try {
         const response = await fetch(`${API_URL}/api/teacher/grades`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         });
 
         const data = (await response.json()) as {

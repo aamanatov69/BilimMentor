@@ -12,14 +12,6 @@ type ToolItem = {
   value: number | null;
 };
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function AdminSettingsPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -27,15 +19,9 @@ export default function AdminSettingsPage() {
   const [updatedAt, setUpdatedAt] = useState("");
 
   const loadSettings = async () => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
-
     try {
       const response = await fetch(`${API_URL}/api/admin/settings/overview`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       });
       const data = (await response.json()) as {
         tools?: ToolItem[];
@@ -60,18 +46,12 @@ export default function AdminSettingsPage() {
   }, []);
 
   const runSystemAction = async (action: "backup" | "restore") => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
-
     setError("");
     setMessage("");
     try {
       const response = await fetch(`${API_URL}/api/admin/system/${action}`, {
+        credentials: "include",
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
       });
       const data = (await response.json()) as { message?: string };
       if (!response.ok) {

@@ -4,14 +4,6 @@ import { type FormEvent, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function AdminNewCoursePage() {
   const [title, setTitle] = useState("");
   const [teacherId, setTeacherId] = useState("");
@@ -22,11 +14,6 @@ export default function AdminNewCoursePage() {
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
 
     setLoading(true);
     setError("");
@@ -34,10 +21,10 @@ export default function AdminNewCoursePage() {
 
     try {
       const response = await fetch(`${API_URL}/api/admin/courses`, {
+          credentials: "include",
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           title,

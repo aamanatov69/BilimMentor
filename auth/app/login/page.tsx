@@ -156,7 +156,7 @@ function LoginPageContent() {
       setForgotSuccessMessage(
         backendMessage && backendMessage.toLowerCase() !== "success"
           ? backendMessage
-          : "Вам было отправлено письмо со ссылкой для сброса пароля",
+          : "Вам на почту выслана ссылка для сброса пароля",
       );
       setIsForgotModalOpen(false);
       setResetEmail("");
@@ -177,7 +177,9 @@ function LoginPageContent() {
           <h1 className="text-4xl font-bold leading-tight tracking-tight text-slate-900">
             <Link href="/">
               С возвращением!{" "}
-              <span className="text-blue-700 text-2xl">Войдите в свой аккаунт</span>
+              <span className="text-blue-700 text-2xl">
+                Войдите в свой аккаунт
+              </span>
             </Link>
           </h1>
           <p className="text-base leading-7 text-slate-600">

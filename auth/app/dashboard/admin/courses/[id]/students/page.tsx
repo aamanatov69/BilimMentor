@@ -21,14 +21,6 @@ type CourseStudentsResponse = {
   message?: string;
 };
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function AdminCourseStudentsPage() {
   const params = useParams();
   const id = String(params.id ?? "");
@@ -39,18 +31,12 @@ export default function AdminCourseStudentsPage() {
   const [error, setError] = useState("");
 
   const loadStudents = async () => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
 
     setError("");
     try {
       const response = await fetch(
-        `${API_URL}/api/admin/courses/${id}/students`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
+        `${API_URL}/api/admin/courses/${id}/students`, {
+          credentials: "include",
         },
       );
 
@@ -74,22 +60,16 @@ export default function AdminCourseStudentsPage() {
   }, [id]);
 
   const toggleEnrollment = async (studentId: string, enrolled: boolean) => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
 
     setBusyStudentId(studentId);
     setError("");
     try {
       const response = await fetch(
-        `${API_URL}/api/admin/courses/${id}/students/${studentId}`,
-        {
+        `${API_URL}/api/admin/courses/${id}/students/${studentId}`, {
+          credentials: "include",
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ enrolled }),
         },

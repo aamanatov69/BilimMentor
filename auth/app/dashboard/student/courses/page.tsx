@@ -28,14 +28,6 @@ function getCourseLevelLabel(level: CourseItem["level"]) {
   return "Продвинутый";
 }
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function StudentCoursesPage() {
   const [allCourses, setAllCourses] = useState<CourseItem[]>([]);
   const [myCourses, setMyCourses] = useState<CourseItem[]>([]);
@@ -45,35 +37,30 @@ export default function StudentCoursesPage() {
   const [pendingCourseIds, setPendingCourseIds] = useState<string[]>([]);
 
   const loadData = async () => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
 
     setError("");
 
     try {
       const [allRes, myRes, reqRes] = await Promise.all([
         fetch(`${API_URL}/api/student/courses/discover`, {
+          credentials: "include",
           headers: {
-            Authorization: `Bearer ${token}`,
             "Cache-Control": "no-cache",
             Pragma: "no-cache",
           },
           cache: "no-store",
         }),
         fetch(`${API_URL}/api/student/courses`, {
+          credentials: "include",
           headers: {
-            Authorization: `Bearer ${token}`,
             "Cache-Control": "no-cache",
             Pragma: "no-cache",
           },
           cache: "no-store",
         }),
         fetch(`${API_URL}/api/student/course-access-requests`, {
+          credentials: "include",
           headers: {
-            Authorization: `Bearer ${token}`,
             "Cache-Control": "no-cache",
             Pragma: "no-cache",
           },
@@ -126,23 +113,17 @@ export default function StudentCoursesPage() {
   }, []);
 
   const requestAccess = async (courseId: string) => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
 
     setBusyCourseId(courseId);
     setError("");
 
     try {
       const response = await fetch(
-        `${API_URL}/api/student/course-access-requests`,
-        {
+        `${API_URL}/api/student/course-access-requests`, {
+          credentials: "include",
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ courseId }),
         },

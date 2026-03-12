@@ -100,14 +100,6 @@ function detectMaterialTypeFromMime(mimeType: string) {
   return "file";
 }
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function TeacherCourseDetailPage() {
   const params = useParams();
   const id = String(params.id ?? "");
@@ -141,20 +133,8 @@ export default function TeacherCourseDetailPage() {
   const [busyLessonId, setBusyLessonId] = useState("");
   const [creatingLesson, setCreatingLesson] = useState(false);
   const [savingLessonEdit, setSavingLessonEdit] = useState(false);
-  const [previewMaterialTitle, setPreviewMaterialTitle] = useState("");
-  const [previewMaterialUrl, setPreviewMaterialUrl] = useState("");
   const lessonCameraInputRef = useRef<HTMLInputElement | null>(null);
   const editLessonCameraInputRef = useRef<HTMLInputElement | null>(null);
-
-  const openMaterialPreview = (title: string, url: string) => {
-    setPreviewMaterialTitle(title || "Материал");
-    setPreviewMaterialUrl(url);
-  };
-
-  const closeMaterialPreview = () => {
-    setPreviewMaterialTitle("");
-    setPreviewMaterialUrl("");
-  };
 
   const mapLessons = (modules: Array<Record<string, unknown>> | undefined) => {
     const list = Array.isArray(modules) ? modules : [];
@@ -183,17 +163,11 @@ export default function TeacherCourseDetailPage() {
   const lessons = mapLessons(details?.course.modules);
 
   const loadDetails = async () => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
-
     try {
       const response = await fetch(
         `${API_URL}/api/teacher/courses/${id}/details`,
         {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         },
       );
       const data = (await response.json()) as CourseDetails & {
@@ -286,17 +260,16 @@ export default function TeacherCourseDetailPage() {
   };
 
   const addMaterialToLesson = async (
-    token: string,
     lessonId: string,
     payload: Record<string, unknown>,
   ) => {
     const response = await fetch(
       `${API_URL}/api/teacher/courses/${id}/lessons/${lessonId}/materials`,
       {
+        credentials: "include",
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       },
@@ -309,12 +282,6 @@ export default function TeacherCourseDetailPage() {
   };
 
   const createLesson = async () => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
-
     const normalizedTitle = lessonTitle.trim();
     const normalizedLecture = lessonLecture.trim();
     if (!normalizedTitle) {
@@ -328,10 +295,10 @@ export default function TeacherCourseDetailPage() {
       const response = await fetch(
         `${API_URL}/api/teacher/courses/${id}/lessons`,
         {
+          credentials: "include",
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             title: normalizedTitle,
@@ -356,7 +323,7 @@ export default function TeacherCourseDetailPage() {
       }
 
       if (normalizedLecture) {
-        await addMaterialToLesson(token, lessonId, {
+        await addMaterialToLesson(lessonId, {
           type: "lecture",
           title: `Лекция: ${normalizedTitle}`,
           text: normalizedLecture,
@@ -368,7 +335,7 @@ export default function TeacherCourseDetailPage() {
         .filter((item) => item.length > 0);
 
       for (const [index, link] of links.entries()) {
-        await addMaterialToLesson(token, lessonId, {
+        await addMaterialToLesson(lessonId, {
           type: "link",
           title: `Ссылка ${index + 1}`,
           url: link,
@@ -384,7 +351,7 @@ export default function TeacherCourseDetailPage() {
           dataBase64,
         };
 
-        await addMaterialToLesson(token, lessonId, {
+        await addMaterialToLesson(lessonId, {
           type: detectMaterialTypeFromMime(payloadFile.type),
           title: file.name,
           file: payloadFile,
@@ -395,10 +362,10 @@ export default function TeacherCourseDetailPage() {
         const assignmentResponse = await fetch(
           `${API_URL}/api/teacher/courses/${id}/assignments`,
           {
+            credentials: "include",
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
               title: assignmentText.trim().slice(0, 120),
@@ -438,22 +405,16 @@ export default function TeacherCourseDetailPage() {
     lessonId: string,
     isVisibleToStudents: boolean,
   ) => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
-
     setBusyLessonId(lessonId);
     setError("");
     try {
       const response = await fetch(
         `${API_URL}/api/teacher/courses/${id}/lessons/${lessonId}/visibility`,
         {
+          credentials: "include",
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ isVisibleToStudents: !isVisibleToStudents }),
         },
@@ -505,11 +466,6 @@ export default function TeacherCourseDetailPage() {
   };
 
   const saveLessonEdit = async () => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
     if (!editingLessonId) {
       setError("Выберите урок для редактирования");
       return;
@@ -526,10 +482,10 @@ export default function TeacherCourseDetailPage() {
       const response = await fetch(
         `${API_URL}/api/teacher/courses/${id}/lessons/${editingLessonId}`,
         {
+          credentials: "include",
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             title: editLessonTitle.trim(),
@@ -549,7 +505,7 @@ export default function TeacherCourseDetailPage() {
         .filter((item) => item.length > 0);
 
       for (const [index, link] of links.entries()) {
-        await addMaterialToLesson(token, editingLessonId, {
+        await addMaterialToLesson(editingLessonId, {
           type: "link",
           title: `Ссылка ${index + 1}`,
           url: link,
@@ -565,7 +521,7 @@ export default function TeacherCourseDetailPage() {
           dataBase64,
         };
 
-        await addMaterialToLesson(token, editingLessonId, {
+        await addMaterialToLesson(editingLessonId, {
           type: detectMaterialTypeFromMime(payloadFile.type),
           title: file.name,
           file: payloadFile,
@@ -576,10 +532,10 @@ export default function TeacherCourseDetailPage() {
         const assignmentResponse = await fetch(
           `${API_URL}/api/teacher/courses/${id}/assignments`,
           {
+            credentials: "include",
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
               title: editAssignmentText.trim().slice(0, 120),
@@ -615,12 +571,6 @@ export default function TeacherCourseDetailPage() {
   };
 
   const deleteLesson = async (lessonId: string, lessonTitleValue: string) => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
-
     setBusyLessonId(lessonId);
     setError("");
 
@@ -628,10 +578,9 @@ export default function TeacherCourseDetailPage() {
       const response = await fetch(
         `${API_URL}/api/teacher/courses/${id}/lessons/${lessonId}`,
         {
+          credentials: "include",
           method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: {},
         },
       );
 
@@ -676,18 +625,12 @@ export default function TeacherCourseDetailPage() {
   };
 
   const deleteCourse = async () => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
-
     setIsDeletingCourse(true);
     setError("");
     try {
       const response = await fetch(`${API_URL}/api/teacher/courses/${id}`, {
+        credentials: "include",
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       const data = (await response.json()) as { message?: string };
@@ -1237,21 +1180,14 @@ export default function TeacherCourseDetailPage() {
                                 ) : null}
                                 {materialUrl ? (
                                   <div className="mt-1 flex flex-wrap items-center gap-3 text-xs">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        openMaterialPreview(
-                                          String(
-                                            material.title ??
-                                              `Материал ${materialIndex + 1}`,
-                                          ),
-                                          materialUrl,
-                                        )
-                                      }
+                                    <a
+                                      href={materialUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
                                       className="text-blue-700 hover:underline"
                                     >
                                       Открыть
-                                    </button>
+                                    </a>
                                     <a
                                       href={materialUrl}
                                       download={fileName || undefined}
@@ -1305,33 +1241,6 @@ export default function TeacherCourseDetailPage() {
         onCancel={cancelDeleteLesson}
         onConfirm={() => void deleteCurrentLesson()}
       />
-
-      {previewMaterialUrl ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
-          <div className="flex h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-              <p className="truncate pr-3 text-sm font-semibold text-slate-900">
-                {previewMaterialTitle}
-              </p>
-              <button
-                type="button"
-                onClick={closeMaterialPreview}
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-              >
-                Закрыть
-              </button>
-            </div>
-
-            <div className="h-full bg-slate-100">
-              <iframe
-                src={previewMaterialUrl}
-                title={previewMaterialTitle || "Предпросмотр материала"}
-                className="h-full w-full"
-              />
-            </div>
-          </div>
-        </div>
-      ) : null}
     </main>
   );
 }

@@ -15,10 +15,6 @@ import { useEffect, useState } from "react";
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const STUDENT_NOTIFICATIONS_SEEN_KEY = "nexoraStudentNotificationsSeenAt";
 
-function getTokenFromCookie() {
-  return "cookie-session";
-}
-
 export default function StudentLayout({
   children,
 }: {
@@ -71,8 +67,6 @@ export default function StudentLayout({
   }, [mobileMenuOpen]);
 
   useEffect(() => {
-    const token = getTokenFromCookie();
-
     let cancelled = false;
 
     const refreshNotificationsFlag = async () => {
@@ -212,8 +206,8 @@ export default function StudentLayout({
                 className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
                 onClick={async () => {
                   await fetch(`${API_URL}/api/auth/logout`, {
-                    method: "POST",
                     credentials: "include",
+                    method: "POST",
                   });
                   router.replace("/");
                 }}

@@ -23,14 +23,6 @@ function getCourseLevelLabel(level: CourseLevel) {
   return "Продвинутый";
 }
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function TeacherCourseEditPage() {
   const params = useParams();
   const id = String(params.id ?? "");
@@ -48,20 +40,14 @@ export default function TeacherCourseEditPage() {
     }
 
     const loadCourse = async () => {
-      const token = getTokenFromCookie();
-      if (!token) {
-        setError("Требуется авторизация");
-        return;
-      }
 
       setLoadingInitial(true);
       setError("");
 
       try {
         const response = await fetch(
-          `${API_URL}/api/teacher/courses/${id}/details`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
+          `${API_URL}/api/teacher/courses/${id}/details`, {
+          credentials: "include",
           },
         );
 
@@ -86,21 +72,16 @@ export default function TeacherCourseEditPage() {
   }, [id]);
 
   const save = async () => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
     setLoading(true);
     setError("");
     setMessage("");
 
     try {
       const response = await fetch(`${API_URL}/api/teacher/courses/${id}`, {
+          credentials: "include",
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ title, description, level }),
       });

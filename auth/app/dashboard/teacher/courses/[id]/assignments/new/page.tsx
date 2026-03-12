@@ -11,14 +11,6 @@ type LessonOption = {
   title: string;
 };
 
-function getTokenFromCookie() {
-  const tokenCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("nexoraToken="));
-
-  return tokenCookie ? decodeURIComponent(tokenCookie.split("=")[1]) : "";
-}
-
 export default function NewAssignmentPage() {
   const params = useParams();
   const id = String(params.id ?? "");
@@ -33,17 +25,11 @@ export default function NewAssignmentPage() {
 
   useEffect(() => {
     const loadLessons = async () => {
-      const token = getTokenFromCookie();
-      if (!token) {
-        setError("Требуется авторизация");
-        return;
-      }
 
       try {
         const response = await fetch(
-          `${API_URL}/api/teacher/courses/${id}/details`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
+          `${API_URL}/api/teacher/courses/${id}/details`, {
+          credentials: "include",
           },
         );
 
@@ -90,11 +76,6 @@ export default function NewAssignmentPage() {
   }, [id]);
 
   const create = async () => {
-    const token = getTokenFromCookie();
-    if (!token) {
-      setError("Требуется авторизация");
-      return;
-    }
 
     setLoading(true);
     setError("");
@@ -108,12 +89,11 @@ export default function NewAssignmentPage() {
 
     try {
       const response = await fetch(
-        `${API_URL}/api/teacher/courses/${id}/assignments`,
-        {
+        `${API_URL}/api/teacher/courses/${id}/assignments`, {
+          credentials: "include",
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ title, description, dueAt, lessonId }),
         },
