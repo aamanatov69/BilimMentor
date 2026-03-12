@@ -49,6 +49,27 @@ app.use(
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
+    strictTransportSecurity:
+      process.env.NODE_ENV === "production"
+        ? {
+            maxAge: 15552000,
+            includeSubDomains: true,
+          }
+        : false,
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: {
+        defaultSrc: ["'none'"],
+        baseUri: ["'none'"],
+        formAction: ["'none'"],
+        frameAncestors: ["'none'"],
+        objectSrc: ["'none'"],
+        scriptSrc: ["'none'"],
+        styleSrc: ["'none'"],
+        imgSrc: ["'none'"],
+        connectSrc: ["'self'"],
+      },
+    },
   }),
 );
 app.use(express.json({ limit: "25mb" }));

@@ -25,6 +25,7 @@ type StudentAssignment = {
   id: string;
   title: string;
   description: string | null;
+  lessonTitle?: string | null;
   dueAt: string | null;
   course: {
     id: string;
@@ -73,7 +74,6 @@ export default function StudentAssignmentsPage() {
     "pending" | "completed" | "missed"
   >("pending");
   const [assignments, setAssignments] = useState<StudentAssignment[]>([]);
-  const [openedForms, setOpenedForms] = useState<Record<string, boolean>>({});
   const [textDrafts, setTextDrafts] = useState<Record<string, string>>({});
   const [formulaDrafts, setFormulaDrafts] = useState<Record<string, string>>(
     {},
@@ -85,10 +85,12 @@ export default function StudentAssignmentsPage() {
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [success, setSuccess] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     const loadAssignments = async () => {
-
       try {
         const response = await fetch(`${API_URL}/api/student/assignments`, {
           credentials: "include",
@@ -159,7 +161,6 @@ export default function StudentAssignmentsPage() {
   };
 
   const submitAssignment = async (assignment: StudentAssignment) => {
-
     const text = (textDrafts[assignment.id] ?? "").trim();
     const formula = (formulaDrafts[assignment.id] ?? "").trim();
     const code = (codeDrafts[assignment.id] ?? "").trim();
@@ -196,7 +197,8 @@ export default function StudentAssignmentsPage() {
       }
 
       const response = await fetch(
-        `${API_URL}/api/student/assignments/${assignment.id}/submit`, {
+        `${API_URL}/api/student/assignments/${assignment.id}/submit`,
+        {
           credentials: "include",
           method: "POST",
           headers: {
@@ -246,7 +248,7 @@ export default function StudentAssignmentsPage() {
             : item,
         ),
       );
-      setOpenedForms((prev) => ({ ...prev, [assignment.id]: false }));
+      setSelectedAssignmentId(null);
 
       setNewAttachments((prev) => ({ ...prev, [assignment.id]: [] }));
       setSuccess((prev) => ({
@@ -302,6 +304,14 @@ export default function StudentAssignmentsPage() {
         ? "Пока нет выполненных заданий."
         : "Нет пропущенных заданий.";
 
+  const selectedAssignment = useMemo(
+    () =>
+      assignments.find(
+        (assignment) => assignment.id === selectedAssignmentId,
+      ) ?? null,
+    [assignments, selectedAssignmentId],
+  );
+
   const renderAssignmentCard = (item: StudentAssignment) => (
     <article
       key={item.id}
@@ -309,7 +319,6 @@ export default function StudentAssignmentsPage() {
     >
       {/** Form is intentionally hidden until user opens it for this assignment. */}
       {(() => {
-        const isFormOpen = !!openedForms[item.id];
         const isOverdue = isOverdueByDueAt(item.dueAt);
         const isBlockedByDeadline = !item.submission && isOverdue;
 
@@ -321,8 +330,10 @@ export default function StudentAssignmentsPage() {
                   {item.title}
                 </h2>
                 <p className="break-words text-sm text-slate-600">
-                  Курс: {item.course.title} • Преподаватель:{" "}
-                  {item.course.teacher}
+                  Курс: {item.course.title}
+                </p>
+                <p className="break-words text-sm text-slate-600">
+                  Урок: {item.lessonTitle?.trim() || "Не указан"}
                 </p>
               </div>
               <div className="w-full text-xs text-slate-600 sm:w-auto sm:text-sm">
@@ -339,32 +350,14 @@ export default function StudentAssignmentsPage() {
               </p>
             ) : null}
 
-            {item.description ? (
-              <p className="mt-3 break-words text-sm text-slate-700">
-                {item.description}
-              </p>
-            ) : null}
-
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              {!item.submission ? (
-                <button
-                  type="button"
-                  disabled={isBlockedByDeadline}
-                  onClick={() =>
-                    setOpenedForms((prev) => ({
-                      ...prev,
-                      [item.id]: !isFormOpen,
-                    }))
-                  }
-                  className="w-full rounded border border-blue-300 px-4 py-2 text-sm text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                >
-                  {isBlockedByDeadline
-                    ? "Срок истек"
-                    : isFormOpen
-                      ? "Скрыть форму ответа"
-                      : "Отправить ответ"}
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={() => setSelectedAssignmentId(item.id)}
+                className="w-full rounded border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 sm:w-auto"
+              >
+                Открыть задание
+              </button>
 
               {item.submission ? (
                 <span className="text-xs text-emerald-700">
@@ -390,142 +383,13 @@ export default function StudentAssignmentsPage() {
               ) : null}
             </div>
 
-            {isFormOpen && !isBlockedByDeadline ? (
-              <>
-                <label className="mt-4 block text-sm font-medium text-slate-700">
-                  Текст решения
-                </label>
-                <textarea
-                  value={textDrafts[item.id] ?? ""}
-                  onChange={(event) =>
-                    setTextDrafts((prev) => ({
-                      ...prev,
-                      [item.id]: event.target.value,
-                    }))
-                  }
-                  className="mt-2 min-h-24 w-full rounded border border-slate-300 px-3 py-2"
-                  placeholder="Опишите решение задания"
-                />
-
-                <div className="mt-3 grid gap-3 md:grid-cols-2">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700">
-                      Формулы (LaTeX/Math)
-                    </label>
-                    <textarea
-                      value={formulaDrafts[item.id] ?? ""}
-                      onChange={(event) =>
-                        setFormulaDrafts((prev) => ({
-                          ...prev,
-                          [item.id]: event.target.value,
-                        }))
-                      }
-                      className="mt-2 min-h-20 w-full rounded border border-slate-300 px-3 py-2"
-                      placeholder="Например: \int_0^1 x^2 dx = 1/3"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700">
-                      Код (programming)
-                    </label>
-                    <textarea
-                      value={codeDrafts[item.id] ?? ""}
-                      onChange={(event) =>
-                        setCodeDrafts((prev) => ({
-                          ...prev,
-                          [item.id]: event.target.value,
-                        }))
-                      }
-                      className="mt-2 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-mono text-sm"
-                      placeholder="Введите код решения"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-3">
-                  <label className="block text-sm font-medium text-slate-700">
-                    Файлы (Word, Excel, PowerPoint, PDF)
-                  </label>
-                  <div className="mt-2">
-                    <input
-                      id={`camera-${item.id}`}
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      className="sr-only"
-                      onChange={(event) =>
-                        void handleFilesSelected(item.id, event.target.files)
-                      }
-                    />
-                    <label
-                      htmlFor={`camera-${item.id}`}
-                      className="inline-flex cursor-pointer rounded border border-sky-300 px-3 py-1.5 text-sm text-sky-700 hover:bg-sky-50"
-                    >
-                      Сфотографировать и прикрепить
-                    </label>
-                  </div>
-                  <input
-                    type="file"
-                    multiple
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.rtf,.txt,.csv,.zip,.rar,.7z,image/*,video/*,audio/*,.json,.xml,.html,.md,.js,.ts,.py,.java,.c,.cpp,.cs"
-                    onChange={(event) =>
-                      void handleFilesSelected(item.id, event.target.files)
-                    }
-                    className="mt-2 block w-full text-sm"
-                  />
-
-                  {(newAttachments[item.id] ?? []).length > 0 ? (
-                    <ul className="mt-2 list-disc pl-5 text-xs text-slate-600">
-                      {(newAttachments[item.id] ?? []).map((attachment) => (
-                        <li
-                          key={`${item.id}-${attachment.name}-${attachment.size}`}
-                          className="break-all"
-                        >
-                          {attachment.name} ({Math.ceil(attachment.size / 1024)}{" "}
-                          KB)
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-
-                  {(item.submission?.attachments ?? []).length > 0 ? (
-                    <ul className="mt-2 list-disc pl-5 text-xs text-slate-600">
-                      {(item.submission?.attachments ?? []).map(
-                        (attachment) => (
-                          <li
-                            key={`${item.submission?.id}-${attachment.name}-${attachment.size}`}
-                            className="break-all"
-                          >
-                            Уже отправлено: {attachment.name} (
-                            {Math.ceil(attachment.size / 1024)} KB)
-                          </li>
-                        ),
-                      )}
-                    </ul>
-                  ) : null}
-                </div>
-
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => void submitAssignment(item)}
-                    disabled={!!busy[item.id]}
-                    className="w-full rounded bg-blue-700 px-4 py-2 text-sm text-white hover:bg-blue-800 disabled:opacity-60 sm:w-auto"
-                  >
-                    {busy[item.id] ? "Отправка..." : "Отправить преподавателю"}
-                  </button>
-                </div>
-              </>
-            ) : null}
-
-            {item.submission?.grade !== null ? (
+            {item.submission && item.submission.grade !== null ? (
               <div className="mt-3 rounded border border-emerald-200 bg-emerald-50 p-3 text-sm">
                 <p className="font-medium text-emerald-800">
-                  Оценка: {item.submission?.grade}
+                  Оценка: {item.submission.grade}
                 </p>
                 <p className="text-emerald-900">
-                  Комментарий: {item.submission?.feedback ?? "-"}
+                  Комментарий: {item.submission.feedback ?? "-"}
                 </p>
               </div>
             ) : null}
@@ -597,6 +461,174 @@ export default function StudentAssignmentsPage() {
           </article>
         )}
       </section>
+
+      {selectedAssignment ? (
+        <div className="fixed inset-0 z-40 bg-slate-950/70 p-2 sm:p-4">
+          <div className="flex min-h-full items-center justify-center">
+            <div className="max-h-[92svh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl sm:p-6">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-semibold">
+                    {selectedAssignment.title}
+                  </h2>
+                  <p className="text-sm text-slate-600">
+                    Курс: {selectedAssignment.course.title}
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    Урок:{" "}
+                    {selectedAssignment.lessonTitle?.trim() || "Не указан"}
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    Дедлайн:{" "}
+                    {selectedAssignment.dueAt
+                      ? new Date(selectedAssignment.dueAt).toLocaleString()
+                      : "Не указан"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+                  onClick={() => setSelectedAssignmentId(null)}
+                >
+                  Закрыть
+                </button>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="whitespace-pre-wrap break-words text-sm text-slate-700">
+                  {selectedAssignment.description?.trim() ||
+                    "Описание задания отсутствует."}
+                </p>
+              </div>
+
+              {!selectedAssignment.submission &&
+              !isOverdueByDueAt(selectedAssignment.dueAt) ? (
+                <>
+                  <label className="mt-4 block text-sm font-medium text-slate-700">
+                    Текст решения
+                  </label>
+                  <textarea
+                    value={textDrafts[selectedAssignment.id] ?? ""}
+                    onChange={(event) =>
+                      setTextDrafts((prev) => ({
+                        ...prev,
+                        [selectedAssignment.id]: event.target.value,
+                      }))
+                    }
+                    className="mt-2 min-h-24 w-full rounded border border-slate-300 px-3 py-2"
+                    placeholder="Опишите решение задания"
+                  />
+
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700">
+                        Формулы (LaTeX/Math)
+                      </label>
+                      <textarea
+                        value={formulaDrafts[selectedAssignment.id] ?? ""}
+                        onChange={(event) =>
+                          setFormulaDrafts((prev) => ({
+                            ...prev,
+                            [selectedAssignment.id]: event.target.value,
+                          }))
+                        }
+                        className="mt-2 min-h-20 w-full rounded border border-slate-300 px-3 py-2"
+                        placeholder="Например: \int_0^1 x^2 dx = 1/3"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700">
+                        Код (programming)
+                      </label>
+                      <textarea
+                        value={codeDrafts[selectedAssignment.id] ?? ""}
+                        onChange={(event) =>
+                          setCodeDrafts((prev) => ({
+                            ...prev,
+                            [selectedAssignment.id]: event.target.value,
+                          }))
+                        }
+                        className="mt-2 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-mono text-sm"
+                        placeholder="Введите код решения"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <label className="block text-sm font-medium text-slate-700">
+                      Файлы (Word, Excel, PowerPoint, PDF)
+                    </label>
+                    <div className="mt-2">
+                      <input
+                        id={`camera-${selectedAssignment.id}`}
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="sr-only"
+                        onChange={(event) =>
+                          void handleFilesSelected(
+                            selectedAssignment.id,
+                            event.target.files,
+                          )
+                        }
+                      />
+                      <label
+                        htmlFor={`camera-${selectedAssignment.id}`}
+                        className="inline-flex cursor-pointer rounded border border-sky-300 px-3 py-1.5 text-sm text-sky-700 hover:bg-sky-50"
+                      >
+                        Сфотографировать и прикрепить
+                      </label>
+                    </div>
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.rtf,.txt,.csv,.zip,.rar,.7z,image/*,video/*,audio/*,.json,.xml,.html,.md,.js,.ts,.py,.java,.c,.cpp,.cs"
+                      onChange={(event) =>
+                        void handleFilesSelected(
+                          selectedAssignment.id,
+                          event.target.files,
+                        )
+                      }
+                      className="mt-2 block w-full text-sm"
+                    />
+
+                    {(newAttachments[selectedAssignment.id] ?? []).length >
+                    0 ? (
+                      <ul className="mt-2 list-disc pl-5 text-xs text-slate-600">
+                        {(newAttachments[selectedAssignment.id] ?? []).map(
+                          (attachment) => (
+                            <li
+                              key={`${selectedAssignment.id}-${attachment.name}-${attachment.size}`}
+                              className="break-all"
+                            >
+                              {attachment.name} (
+                              {Math.ceil(attachment.size / 1024)} KB)
+                            </li>
+                          ),
+                        )}
+                      </ul>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => void submitAssignment(selectedAssignment)}
+                      disabled={!!busy[selectedAssignment.id]}
+                      className="w-full rounded bg-blue-700 px-4 py-2 text-sm text-white hover:bg-blue-800 disabled:opacity-60 sm:w-auto"
+                    >
+                      {busy[selectedAssignment.id]
+                        ? "Отправка..."
+                        : "Отправить ответ"}
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

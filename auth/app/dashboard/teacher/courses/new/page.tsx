@@ -49,6 +49,7 @@ export default function NewTeacherCoursePage() {
   const [lessonLinks, setLessonLinks] = useState<string[]>([]);
   const [lessonFiles, setLessonFiles] = useState<File[]>([]);
   const [assignmentText, setAssignmentText] = useState("");
+  const [assignmentDueAt, setAssignmentDueAt] = useState("");
   const [showLinkInputs, setShowLinkInputs] = useState(false);
   const [showFileInput, setShowFileInput] = useState(false);
   const [showAssignmentInput, setShowAssignmentInput] = useState(false);
@@ -232,6 +233,10 @@ export default function NewTeacherCoursePage() {
       }
 
       if (showAssignmentInput && assignmentText.trim()) {
+        if (!assignmentDueAt.trim()) {
+          throw new Error("Укажите дедлайн для задания");
+        }
+
         const assignmentResponse = await fetch(
           `${API_URL}/api/teacher/courses/${courseId}/assignments`,
           {
@@ -244,6 +249,7 @@ export default function NewTeacherCoursePage() {
               title: assignmentText.trim().slice(0, 120),
               description: assignmentText.trim(),
               lessonId,
+              dueAt: assignmentDueAt,
             }),
           },
         );
@@ -457,12 +463,28 @@ export default function NewTeacherCoursePage() {
           ) : null}
 
           {showAssignmentInput ? (
-            <textarea
-              className="min-h-20 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-              placeholder="Поле задания"
-              value={assignmentText}
-              onChange={(event) => setAssignmentText(event.target.value)}
-            />
+            <div className="space-y-2 rounded border border-slate-200 p-3">
+              <textarea
+                className="min-h-20 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Поле задания"
+                value={assignmentText}
+                onChange={(event) => setAssignmentText(event.target.value)}
+              />
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700">
+                  Дедлайн задания
+                </label>
+                <input
+                  type="datetime-local"
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                  value={assignmentDueAt}
+                  onChange={(event) => setAssignmentDueAt(event.target.value)}
+                  required={
+                    showAssignmentInput && Boolean(assignmentText.trim())
+                  }
+                />
+              </div>
+            </div>
           ) : null}
 
           <div className="flex flex-wrap gap-2">

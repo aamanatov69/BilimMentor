@@ -23,7 +23,17 @@ export default function StudentLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [hasNewNotifications, setHasNewNotifications] = useState(false);
+  const [hasPendingAssignments, setHasPendingAssignments] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const hasAnyMenuAlerts = hasNewNotifications || hasPendingAssignments;
+
+  const handleLogout = async () => {
+    await fetch(`${API_URL}/api/auth/logout`, {
+      credentials: "include",
+      method: "POST",
+    });
+    router.replace("/");
+  };
 
   const navClass = (href: string, exact = false, mobile = false) => {
     const isActive = exact
@@ -69,59 +79,83 @@ export default function StudentLayout({
   useEffect(() => {
     let cancelled = false;
 
-    const refreshNotificationsFlag = async () => {
+    const refreshIndicators = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/notifications`, {
-          credentials: "include",
-        });
+        const [notificationsResponse, assignmentsResponse] = await Promise.all([
+          fetch(`${API_URL}/api/notifications`, {
+            credentials: "include",
+          }),
+          fetch(`${API_URL}/api/student/assignments`, {
+            credentials: "include",
+          }),
+        ]);
 
-        if (!response.ok) {
+        if (!notificationsResponse.ok) {
           if (!cancelled) {
             setHasNewNotifications(false);
+          }
+        } else {
+          const data = (await notificationsResponse.json()) as {
+            notifications?: Array<{ createdAt: string }>;
+          };
+          const latestCreatedAt = data.notifications?.[0]?.createdAt ?? "";
+
+          if (pathname.startsWith("/dashboard/student/notifications")) {
+            if (latestCreatedAt) {
+              localStorage.setItem(
+                STUDENT_NOTIFICATIONS_SEEN_KEY,
+                latestCreatedAt,
+              );
+            }
+            if (!cancelled) {
+              setHasNewNotifications(false);
+            }
+          } else {
+            const seenAt =
+              localStorage.getItem(STUDENT_NOTIFICATIONS_SEEN_KEY) ?? "";
+            const hasNew =
+              Boolean(latestCreatedAt) &&
+              (!seenAt ||
+                new Date(latestCreatedAt).getTime() >
+                  new Date(seenAt).getTime());
+
+            if (!cancelled) {
+              setHasNewNotifications(hasNew);
+            }
+          }
+        }
+
+        if (!assignmentsResponse.ok) {
+          if (!cancelled) {
+            setHasPendingAssignments(false);
           }
           return;
         }
 
-        const data = (await response.json()) as {
-          notifications?: Array<{ createdAt: string }>;
+        const assignmentsData = (await assignmentsResponse.json()) as {
+          assignments?: Array<{ submission?: unknown }>;
         };
-        const latestCreatedAt = data.notifications?.[0]?.createdAt ?? "";
 
-        if (pathname.startsWith("/dashboard/student/notifications")) {
-          if (latestCreatedAt) {
-            localStorage.setItem(
-              STUDENT_NOTIFICATIONS_SEEN_KEY,
-              latestCreatedAt,
-            );
-          }
-          if (!cancelled) {
-            setHasNewNotifications(false);
-          }
-          return;
-        }
-
-        const seenAt =
-          localStorage.getItem(STUDENT_NOTIFICATIONS_SEEN_KEY) ?? "";
-        const hasNew =
-          Boolean(latestCreatedAt) &&
-          (!seenAt ||
-            new Date(latestCreatedAt).getTime() > new Date(seenAt).getTime());
+        const hasPending = (assignmentsData.assignments ?? []).some(
+          (item) => !item.submission,
+        );
 
         if (!cancelled) {
-          setHasNewNotifications(hasNew);
+          setHasPendingAssignments(hasPending);
         }
       } catch {
         if (!cancelled) {
           setHasNewNotifications(false);
+          setHasPendingAssignments(false);
         }
       }
     };
 
     const handleSeenUpdate = () => {
-      void refreshNotificationsFlag();
+      void refreshIndicators();
     };
 
-    void refreshNotificationsFlag();
+    void refreshIndicators();
     window.addEventListener(
       "student-notifications-seen-updated",
       handleSeenUpdate,
@@ -168,7 +202,12 @@ export default function StudentLayout({
                 className={navClass("/dashboard/student/assignments")}
                 href="/dashboard/student/assignments"
               >
-                Задания
+                <span className="inline-flex items-center gap-1.5">
+                  Задания
+                  {hasPendingAssignments ? (
+                    <span className="h-2 w-2 rounded-full bg-rose-500" />
+                  ) : null}
+                </span>
               </Link>
               <Link
                 className={navClass("/dashboard/student/grades")}
@@ -191,7 +230,7 @@ export default function StudentLayout({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="rounded-md border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50 md:hidden"
+                className="relative rounded-md border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50 md:hidden"
                 onClick={() => setMobileMenuOpen((prev) => !prev)}
                 aria-label={mobileMenuOpen ? "Закрыть меню" : "Открыть меню"}
               >
@@ -200,17 +239,14 @@ export default function StudentLayout({
                 ) : (
                   <Menu className="h-4 w-4" />
                 )}
+                {!mobileMenuOpen && hasAnyMenuAlerts ? (
+                  <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-rose-500" />
+                ) : null}
               </button>
               <Bell className="hidden h-4 w-4 text-slate-500 sm:block" />
               <button
-                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                onClick={async () => {
-                  await fetch(`${API_URL}/api/auth/logout`, {
-                    credentials: "include",
-                    method: "POST",
-                  });
-                  router.replace("/");
-                }}
+                className="hidden rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 md:inline-flex"
+                onClick={() => void handleLogout()}
               >
                 <span className="inline-flex items-center gap-1.5">
                   <LogOut className="h-4 w-4" />
@@ -243,7 +279,12 @@ export default function StudentLayout({
                 )}
                 href="/dashboard/student/assignments"
               >
-                Задания
+                <span className="inline-flex items-center gap-1.5">
+                  Задания
+                  {hasPendingAssignments ? (
+                    <span className="h-2 w-2 rounded-full bg-rose-500" />
+                  ) : null}
+                </span>
               </Link>
               <Link
                 className={navClass("/dashboard/student/grades", false, true)}
@@ -266,6 +307,15 @@ export default function StudentLayout({
                   ) : null}
                 </span>
               </Link>
+
+              <button
+                type="button"
+                className="mt-2 inline-flex items-center justify-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-700 hover:bg-slate-50"
+                onClick={() => void handleLogout()}
+              >
+                <LogOut className="h-4 w-4" />
+                Выйти
+              </button>
             </nav>
           ) : null}
         </header>

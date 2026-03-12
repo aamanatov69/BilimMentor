@@ -39,7 +39,6 @@ export default function TeacherGradesPage() {
 
   useEffect(() => {
     const loadGrades = async () => {
-
       try {
         const response = await fetch(`${API_URL}/api/teacher/grades`, {
           credentials: "include",
@@ -91,7 +90,6 @@ export default function TeacherGradesPage() {
   }, [targetSubmissionId, gradeRows.length]);
 
   const saveGrade = async (row: GradeRow) => {
-
     const rawValue = scoreDrafts[row.submissionId] ?? "";
     const score = Number(rawValue);
     if (!Number.isFinite(score) || score < 0 || score > 100) {
@@ -105,7 +103,8 @@ export default function TeacherGradesPage() {
 
     try {
       const response = await fetch(
-        `${API_URL}/api/teacher/submissions/${row.submissionId}/grade`, {
+        `${API_URL}/api/teacher/submissions/${row.submissionId}/grade`,
+        {
           credentials: "include",
           method: "PATCH",
           headers: {
@@ -150,6 +149,7 @@ export default function TeacherGradesPage() {
         [row.submissionId]: String(score),
       }));
       setSavedIds((prev) => ({ ...prev, [row.submissionId]: true }));
+      window.dispatchEvent(new Event("teacher-grades-updated"));
     } catch {
       setError("Ошибка сети");
     } finally {
@@ -168,7 +168,8 @@ export default function TeacherGradesPage() {
 
     try {
       const response = await fetch(
-        `${API_URL}/api/teacher/submissions/${commentModalRow.submissionId}/comment`, {
+        `${API_URL}/api/teacher/submissions/${commentModalRow.submissionId}/comment`,
+        {
           credentials: "include",
           method: "PATCH",
           headers: {

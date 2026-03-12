@@ -244,6 +244,22 @@ function isAssignmentVisibleToStudents(
   return lesson.isVisibleToStudents !== false;
 }
 
+function readLessonTitleById(courseModules: unknown, lessonId?: string | null) {
+  const normalizedLessonId = asString(lessonId).trim();
+  if (!normalizedLessonId) {
+    return null;
+  }
+
+  const modules = asModuleRecordArray(courseModules);
+  const lessonIndex = findLessonIndex(modules, normalizedLessonId);
+  if (lessonIndex < 0) {
+    return null;
+  }
+
+  const title = asString(modules[lessonIndex]?.title).trim();
+  return title || null;
+}
+
 function asString(value: unknown) {
   return typeof value === "string" ? value : "";
 }
@@ -3396,6 +3412,7 @@ export async function studentAssignments(userId?: string) {
         title: item.title,
         description: item.description,
         lessonId: item.lessonId,
+        lessonTitle: readLessonTitleById(item.course.modules, item.lessonId),
         dueAt: item.dueAt?.toISOString() ?? null,
         course: {
           id: item.course.id,

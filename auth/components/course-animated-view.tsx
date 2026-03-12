@@ -162,7 +162,7 @@ function Modal({
           >
             <div
               className={`relative max-h-[92svh] overflow-x-hidden overflow-y-auto bg-gradient-to-br ${modalVisual}`}
-              onClick={(event) => event.stopPropagation()}
+              onClick={onClose}
             >
               <div className="pointer-events-none absolute -left-24 -top-20 h-52 w-52 rounded-full bg-white/20 blur-3xl" />
               <div className="pointer-events-none absolute -right-20 bottom-8 h-40 w-40 rounded-full bg-cyan-200/20 blur-3xl" />
