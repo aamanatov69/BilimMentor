@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { startTransition, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 type PublicCourse = {
   id: string;
@@ -73,7 +73,7 @@ function Item({
       <button
         type="button"
         className="group block w-full text-left transition duration-300 hover:-translate-y-1 md:hover:scale-[1.02]"
-        onClick={() => startTransition(() => setSelectedItem(course.id))}
+        onClick={() => setSelectedItem(course.id)}
       >
         <div
           className={`relative min-h-[255px] bg-gradient-to-br sm:min-h-[275px] ${visual}`}
@@ -149,15 +149,19 @@ function Modal({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        onClick={onClose}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) {
+            onClose();
+          }
+        }}
       >
         <div className="flex min-h-full items-center justify-center">
           <AnimateView
             name={animationName}
-            className={`w-full ${modalWidthClass} overflow-hidden rounded-3xl border border-white/25 bg-slate-900 shadow-[0_24px_60px_rgba(2,6,23,0.55)]`}
+            className={`w-full ${modalWidthClass} overflow-x-hidden overflow-y-hidden rounded-3xl border border-white/25 bg-slate-900 shadow-[0_24px_60px_rgba(2,6,23,0.55)]`}
           >
             <div
-              className={`relative max-h-[92svh] overflow-y-auto bg-gradient-to-br ${modalVisual}`}
+              className={`relative max-h-[92svh] overflow-x-hidden overflow-y-auto bg-gradient-to-br ${modalVisual}`}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="pointer-events-none absolute -left-24 -top-20 h-52 w-52 rounded-full bg-white/20 blur-3xl" />
@@ -177,7 +181,7 @@ function Modal({
                   </div>
 
                   <h3
-                    className="text-xl font-bold leading-snug tracking-tight text-white sm:text-3xl"
+                    className="break-words text-xl font-bold leading-snug tracking-tight text-white sm:text-3xl"
                     style={{
                       fontFamily: '"Montserrat", "Manrope", sans-serif',
                     }}
@@ -185,7 +189,7 @@ function Modal({
                     {selectedCourse.title}
                   </h3>
 
-                  <p className="mt-3 text-sm font-medium leading-7 text-slate-100 sm:text-base">
+                  <p className="mt-3 break-words text-sm font-medium leading-7 text-slate-100 sm:text-base">
                     {descriptionText}
                   </p>
                 </div>
@@ -233,7 +237,7 @@ export function AnimatedCourseGrid({ courses }: { courses: PublicCourse[] }) {
       {selectedCourse ? (
         <Modal
           selectedCourse={selectedCourse}
-          onClose={() => startTransition(() => setSelectedItem(null))}
+          onClose={() => setSelectedItem(null)}
         />
       ) : null}
     </>
