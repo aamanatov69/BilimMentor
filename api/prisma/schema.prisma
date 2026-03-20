@@ -153,10 +153,13 @@ model Notification {
   type       NotificationType
   title      String
   body       String
+  isRead     Boolean                @default(false)
   createdAt  DateTime               @default(now())
   targetRole NotificationTargetRole
   userId     String?
   user       User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
 }
 
 model Assignment {

@@ -161,6 +161,28 @@ lmsRoutes.get(
   requireRole([UserRole.student, UserRole.teacher, UserRole.admin]),
   asyncHandler(lmsController.notifications),
 );
+
+lmsRoutes.get(
+  "/api/notifications/unread-count",
+  verifyToken,
+  requireRole([UserRole.student, UserRole.teacher, UserRole.admin]),
+  asyncHandler(lmsController.unreadNotificationCount),
+);
+
+lmsRoutes.patch(
+  "/api/notifications/:id/read",
+  verifyToken,
+  requireRole([UserRole.student, UserRole.teacher, UserRole.admin]),
+  asyncHandler(lmsController.markNotificationAsRead),
+);
+
+lmsRoutes.patch(
+  "/api/notifications/read/all",
+  verifyToken,
+  requireRole([UserRole.student, UserRole.teacher, UserRole.admin]),
+  asyncHandler(lmsController.markAllNotificationsAsRead),
+);
+
 lmsRoutes.get(
   "/api/users",
   verifyToken,

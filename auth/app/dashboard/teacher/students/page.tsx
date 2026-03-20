@@ -1,5 +1,6 @@
-﻿"use client";
+"use client";
 
+import { CheckCircle2, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -48,88 +49,89 @@ export default function TeacherStudentsPage() {
   const [busyRequestId, setBusyRequestId] = useState("");
 
   const loadStudents = async () => {
-
     setError("");
 
+    if (!API_URL) {
+      setError("Не задан NEXT_PUBLIC_API_URL");
+      setStudents([]);
+      return;
+    }
+
     try {
-      const [coursesRes, pendingRes] = await Promise.all([
-        fetch(`${API_URL}/api/teacher/courses`, {
-          credentials: "include",
-        }),
+      const [coursesResponse, requestsResponse] = await Promise.all([
+        fetch(`${API_URL}/api/teacher/courses`, { credentials: "include" }),
         fetch(`${API_URL}/api/teacher/course-access-requests?status=pending`, {
           credentials: "include",
         }),
       ]);
 
-      const coursesData = (await coursesRes.json()) as {
-        courses?: TeacherCourseItem[];
-        message?: string;
-      };
-      const pendingData = (await pendingRes.json()) as {
-        requests?: AccessRequest[];
-        message?: string;
-      };
-
-      if (!coursesRes.ok || !pendingRes.ok) {
-        setError(
-          coursesData.message ??
-            pendingData.message ??
-            "Не удалось загрузить студентов",
-        );
+      if (!coursesResponse.ok) {
+        setError("Не удалось загрузить список курсов");
+        setStudents([]);
         return;
       }
 
-      const courseList = coursesData.courses ?? [];
-      const detailResponses = await Promise.all(
-        courseList.map(async (course) => {
-          const response = await fetch(
-            `${API_URL}/api/teacher/courses/${course.id}/details`, {
-          credentials: "include",
-            },
+      const coursesPayload = (await coursesResponse.json()) as {
+        courses?: TeacherCourseItem[];
+      };
+      const courses = coursesPayload.courses ?? [];
+
+      const requestPayload = requestsResponse.ok
+        ? ((await requestsResponse.json()) as { requests?: AccessRequest[] })
+        : { requests: [] as AccessRequest[] };
+      const pendingRequests = (requestPayload.requests ?? []).filter(
+        (request) => request.status === "pending",
+      );
+
+      const detailsResponses = await Promise.all(
+        courses.map(async (course) => {
+          const detailsResponse = await fetch(
+            `${API_URL}/api/teacher/courses/${course.id}/details`,
+            { credentials: "include" },
           );
 
-          if (!response.ok) {
+          if (!detailsResponse.ok) {
             return null;
           }
 
-          const data = (await response.json()) as TeacherCourseDetails;
+          const detailsPayload =
+            (await detailsResponse.json()) as TeacherCourseDetails;
           return {
-            courseId: course.id,
-            students: data.students ?? [],
+            course,
+            students: detailsPayload.students ?? [],
           };
         }),
       );
 
-      const nextStudents: CourseStudentCard[] = detailResponses
-        .filter((item): item is NonNullable<typeof item> => item !== null)
-        .flatMap((item) =>
-          item.students.map((student) => ({
-            id: `${item.courseId}-${student.id}`,
+      const mapByStudentId = new Map<string, CourseStudentCard>();
+
+      detailsResponses.forEach((entry) => {
+        if (!entry) return;
+
+        (entry.students ?? []).forEach((student) => {
+          mapByStudentId.set(student.id, {
+            id: `${entry.course.id}-${student.id}`,
             studentId: student.id,
             fullName: student.fullName,
             email: student.email,
             phone: student.phone ?? "",
-            courseId: item.courseId,
-            status: "approved" as const,
-          })),
-        );
+            courseId: entry.course.id,
+            status: "approved",
+          });
+        });
+      });
 
-      const mapByStudentId = nextStudents.reduce<
-        Map<string, CourseStudentCard>
-      >((acc, student) => {
-        if (!acc.has(student.studentId)) {
-          acc.set(student.studentId, student);
-        }
-        return acc;
-      }, new Map());
-
-      (pendingData.requests ?? []).forEach((request) => {
-        if (request.status !== "pending" || !request.student?.id) {
+      pendingRequests.forEach((request) => {
+        if (
+          !request.student?.id ||
+          !request.student.fullName ||
+          !request.student.email
+        ) {
           return;
         }
 
         const current = mapByStudentId.get(request.student.id);
-        const pendingEntry: CourseStudentCard = {
+        mapByStudentId.set(request.student.id, {
           id: current?.id ?? `pending-${request.id}`,
           studentId: request.student.id,
           fullName: request.student.fullName,
@@ -139,22 +141,17 @@ export default function TeacherStudentsPage() {
           requestId: request.id,
           requestCourseTitle: request.course?.title,
           status: "pending",
-        };
-
-        mapByStudentId.set(request.student.id, pendingEntry);
+        });
       });
 
-      const uniqueStudents = Array.from(mapByStudentId.values());
-
-      const sortedStudents = [...uniqueStudents].sort((a, b) =>
-        a.fullName.localeCompare(b.fullName, "ru-RU", {
-          sensitivity: "base",
-        }),
+      const sortedStudents = Array.from(mapByStudentId.values()).sort((a, b) =>
+        a.fullName.localeCompare(b.fullName, "ru-RU", { sensitivity: "base" }),
       );
 
       setStudents(sortedStudents);
     } catch {
       setError("Ошибка сети при загрузке студентов");
+      setStudents([]);
     }
   };
 
@@ -162,12 +159,17 @@ export default function TeacherStudentsPage() {
     requestId: string,
     status: "approved" | "rejected",
   ) => {
+    if (!API_URL) {
+      setError("Не задан NEXT_PUBLIC_API_URL");
+      return;
+    }
 
     setBusyRequestId(requestId);
     setError("");
     try {
       const response = await fetch(
-        `${API_URL}/api/teacher/course-access-requests/${requestId}`, {
+        `${API_URL}/api/teacher/course-access-requests/${requestId}`,
+        {
           credentials: "include",
           method: "PATCH",
           headers: {
@@ -183,6 +185,20 @@ export default function TeacherStudentsPage() {
         return;
       }
 
+      // Оптимистично обновляем статус, чтобы студент не исчезал из списка
+      if (status === "approved") {
+        setStudents((prev) =>
+          prev.map((s) =>
+            s.requestId === requestId
+              ? { ...s, status: "approved", requestId: undefined }
+              : s,
+          ),
+        );
+      } else {
+        // При отклонении убираем студента из списка
+        setStudents((prev) => prev.filter((s) => s.requestId !== requestId));
+      }
+
       await loadStudents();
     } catch {
       setError("Ошибка сети при обработке заявки");
@@ -196,13 +212,19 @@ export default function TeacherStudentsPage() {
   }, []);
 
   return (
-    <main className="space-y-4">
+    <main className="space-y-6">
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-        <h1 className="text-xl font-semibold sm:text-2xl">Студенты</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold text-slate-900">Студенты</h1>
+        </div>
         {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <h2 className="mb-4 text-lg font-bold text-slate-900">
+          Все студенты ({students.length})
+        </h2>
+
         {students.length === 0 ? (
           <p className="text-sm text-slate-600">Студентов пока нет.</p>
         ) : (
@@ -216,47 +238,51 @@ export default function TeacherStudentsPage() {
                   <p className="break-words font-medium text-slate-900">
                     {student.fullName}
                   </p>
-                  <p className="mt-1 break-all text-sm text-slate-700">
-                    {student.email}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-600">
+                  {student.email ? (
+                    <p className="mt-0.5 break-all text-xs text-slate-500">
+                      {student.email}
+                    </p>
+                  ) : null}
+                  <p className="mt-0.5 text-xs text-slate-600">
                     {student.phone || "Телефон не указан"}
                   </p>
 
-                  <div className="mt-3 space-y-2">
+                  <div className="mt-3">
                     {student.status === "pending" ? (
                       <>
-                        <span className="block text-xs text-amber-700">
-                          Запрос на курс:{" "}
-                          {student.requestCourseTitle ?? student.courseId}
-                        </span>
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                           <button
                             type="button"
-                            className="rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700"
+                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={busyRequestId === student.requestId}
                             onClick={() => {
                               if (!student.requestId) return;
                               void reviewRequest(student.requestId, "approved");
                             }}
                           >
-                            Одобрить
+                            <CheckCircle2 className="h-4 w-4" />
+                            {busyRequestId === student.requestId
+                              ? "Обработка..."
+                              : "Одобрить"}
                           </button>
                           <button
                             type="button"
-                            className="rounded border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700"
+                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={busyRequestId === student.requestId}
                             onClick={() => {
                               if (!student.requestId) return;
                               void reviewRequest(student.requestId, "rejected");
                             }}
                           >
-                            Отказать
+                            <XCircle className="h-4 w-4" />
+                            {busyRequestId === student.requestId
+                              ? "Обработка..."
+                              : "Отказать"}
                           </button>
                         </div>
                       </>
                     ) : (
-                      <span className="text-xs text-emerald-700">
+                      <span className="inline-block rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
                         Доступ одобрен
                       </span>
                     )}
@@ -283,56 +309,62 @@ export default function TeacherStudentsPage() {
                         {student.fullName}
                       </td>
                       <td className="py-3 pr-3">
-                        <p className="break-all text-slate-700">
-                          {student.email}
-                        </p>
-                        <p className="mt-1 text-slate-600">
+                        {student.email ? (
+                          <p className="break-all text-sm text-slate-700">
+                            {student.email}
+                          </p>
+                        ) : null}
+                        <p className="mt-0.5 text-slate-600">
                           {student.phone || "Телефон не указан"}
                         </p>
                       </td>
                       <td className="py-3 pr-3">
-                        <div className="flex flex-wrap items-center gap-3">
-                          {student.status === "pending" ? (
-                            <>
-                              <span className="text-xs text-amber-700">
-                                Запрос на курс:{" "}
-                                {student.requestCourseTitle ?? student.courseId}
-                              </span>
-                              <button
-                                type="button"
-                                className="text-xs text-emerald-700 hover:underline"
-                                disabled={busyRequestId === student.requestId}
-                                onClick={() => {
-                                  if (!student.requestId) return;
-                                  void reviewRequest(
-                                    student.requestId,
-                                    "approved",
-                                  );
-                                }}
-                              >
-                                Одобрить
-                              </button>
-                              <button
-                                type="button"
-                                className="text-xs text-rose-700 hover:underline"
-                                disabled={busyRequestId === student.requestId}
-                                onClick={() => {
-                                  if (!student.requestId) return;
-                                  void reviewRequest(
-                                    student.requestId,
-                                    "rejected",
-                                  );
-                                }}
-                              >
-                                Отказать
-                              </button>
-                            </>
-                          ) : (
-                            <span className="text-xs text-emerald-700">
-                              Доступ одобрен
+                        {student.status === "pending" ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-md bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">
+                              Запрос:{" "}
+                              {student.requestCourseTitle ?? student.courseId}
                             </span>
-                          )}
-                        </div>
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                              disabled={busyRequestId === student.requestId}
+                              onClick={() => {
+                                if (!student.requestId) return;
+                                void reviewRequest(
+                                  student.requestId,
+                                  "approved",
+                                );
+                              }}
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              {busyRequestId === student.requestId
+                                ? "..."
+                                : "Одобрить"}
+                            </button>
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-md bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                              disabled={busyRequestId === student.requestId}
+                              onClick={() => {
+                                if (!student.requestId) return;
+                                void reviewRequest(
+                                  student.requestId,
+                                  "rejected",
+                                );
+                              }}
+                            >
+                              <XCircle className="h-3.5 w-3.5" />
+                              {busyRequestId === student.requestId
+                                ? "..."
+                                : "Отказать"}
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="inline-block rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                            Доступ одобрен
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}

@@ -1,6 +1,7 @@
 "use client";
 
 import { ConfirmModal } from "@/components/ui/confirm-modal";
+import { BookOpen, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -15,6 +16,7 @@ type CourseItem = {
   level: "beginner" | "intermediate" | "advanced";
   isPublished: boolean;
   createdAt: string;
+  studentsCount?: number;
 };
 
 function getCourseLevelLabel(level: CourseItem["level"]) {
@@ -30,8 +32,6 @@ export default function TeacherCoursesPage() {
   const [editCourseId, setEditCourseId] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [editLevel, setEditLevel] = useState<CourseItem["level"]>("beginner");
-  const [editError, setEditError] = useState("");
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [busyCourseId, setBusyCourseId] = useState("");
   const [deleteCourseId, setDeleteCourseId] = useState("");
   const [deleteCourseTitle, setDeleteCourseTitle] = useState("");
@@ -101,73 +101,13 @@ export default function TeacherCoursesPage() {
     setEditCourseId(course.id);
     setEditTitle(course.title);
     setEditLevel(course.level);
-    setEditError("");
     setError("");
   };
 
   const closeEditModal = () => {
-    if (isSavingEdit) {
-      return;
-    }
     setEditCourseId("");
     setEditTitle("");
     setEditLevel("beginner");
-    setEditError("");
-  };
-
-  const saveCourseEdit = async () => {
-    if (!editCourseId) {
-      return;
-    }
-
-    const normalizedTitle = editTitle.trim();
-    if (!normalizedTitle) {
-      setEditError("Название курса обязательно");
-      return;
-    }
-
-    setIsSavingEdit(true);
-    setEditError("");
-
-    try {
-      const response = await fetch(
-        `${API_URL}/api/teacher/courses/${editCourseId}`,
-        {
-          credentials: "include",
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            title: normalizedTitle,
-            level: editLevel,
-          }),
-        },
-      );
-
-      const data = (await response.json()) as { message?: string };
-      if (!response.ok) {
-        setEditError(data.message ?? "Не удалось обновить курс");
-        return;
-      }
-
-      setCourses((prev) =>
-        prev.map((course) =>
-          course.id === editCourseId
-            ? {
-                ...course,
-                title: normalizedTitle,
-                level: editLevel,
-              }
-            : course,
-        ),
-      );
-      closeEditModal();
-    } catch {
-      setEditError("Ошибка сети при сохранении курса");
-    } finally {
-      setIsSavingEdit(false);
-    }
   };
 
   const closeDeleteModal = () => {
@@ -211,16 +151,15 @@ export default function TeacherCoursesPage() {
   };
 
   return (
-    <main className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+    <main className="p-0 md:rounded-xl md:border md:border-slate-200 md:bg-white md:p-4 md:shadow-sm lg:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold sm:text-2xl">
-          Курсы преподавателя
-        </h1>
+        <h1 className="text-2xl font-semibold">Курсы</h1>
         <Link
           href="/dashboard/teacher/courses/new"
-          className="w-full rounded-md bg-blue-700 px-3 py-2 text-center text-sm text-white hover:bg-blue-800 sm:w-auto"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-400 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:w-auto"
         >
-          Добавить курс
+          <Plus className="h-4 w-4" />
+          Создать новый курс
         </Link>
       </div>
 
@@ -240,97 +179,94 @@ export default function TeacherCoursesPage() {
         {courses.map((course) => (
           <article
             key={`mobile-${course.id}`}
-            className="rounded-lg border border-slate-200 p-3"
+            className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
           >
-            <p className="font-medium text-slate-900">{course.title}</p>
-            <p className="mt-1 text-xs text-slate-600">
-              Уровень: {getCourseLevelLabel(course.level)}
-            </p>
-            <p className="text-xs text-slate-600">
-              Статус: {course.isPublished ? "Опубликован" : "Скрыт"}
-            </p>
-
-            <div className="mt-3 flex flex-wrap gap-3 text-sm">
+            <div className="flex items-center justify-between gap-3">
               <Link
                 href={`/dashboard/teacher/courses/${course.id}`}
-                className="text-blue-700 hover:underline"
+                className="flex min-w-0 flex-1 items-center gap-3"
               >
-                Открыть
+                <div className="flex h-11 w-11 min-w-fit items-center justify-center rounded-lg bg-slate-700 text-white">
+                  <BookOpen className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-lg font-semibold leading-5 text-slate-900">
+                    {course.title}
+                  </p>
+                  <p className="mt-1 text-lg font-medium leading-none text-slate-700">
+                    {course.studentsCount ?? 0} студентов
+                  </p>
+                </div>
               </Link>
-              <button
-                type="button"
-                onClick={() => openEditModal(course)}
-                className="text-blue-700 hover:underline"
-              >
-                Редактировать
-              </button>
               {course.isPublished ? (
-                <button
-                  className="text-amber-700 hover:underline"
-                  disabled={busyCourseId === course.id}
-                  onClick={() => void updateVisibility(course.id, false)}
-                >
-                  Скрыть
-                </button>
+                <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700 whitespace-nowrap">
+                  Активен
+                </span>
               ) : (
-                <button
-                  className="text-emerald-700 hover:underline"
-                  disabled={busyCourseId === course.id}
-                  onClick={() => void updateVisibility(course.id, true)}
-                >
-                  Опубликовать
-                </button>
+                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700 whitespace-nowrap">
+                  Черновик
+                </span>
               )}
-              <button
-                type="button"
-                onClick={() => openDeleteModal(course.id, course.title)}
-                className="text-rose-600 hover:underline"
-              >
-                Удалить
-              </button>
             </div>
           </article>
         ))}
       </div>
 
       <div className="mobile-scroll mt-4 hidden overflow-x-auto md:block">
-        <table className="w-full min-w-[760px] border-collapse text-sm">
+        <table className="w-full min-w-[900px] border-collapse">
           <thead>
-            <tr className="border-b border-slate-200 text-left text-slate-500">
-              <th className="py-2 pr-3 font-medium">Название курса</th>
-              <th className="py-2 pr-3 font-medium">Уровень</th>
-              <th className="py-2 pr-3 font-medium">Статус</th>
-              <th className="py-2 pr-3 font-medium">Действия</th>
+            <tr className="border-b border-slate-200 text-left text-sm font-medium text-slate-600">
+              <th className="px-4 py-3">Курс</th>
+              <th className="px-4 py-3">Статус</th>
+              <th className="px-4 py-3">Студент</th>
+              <th className="px-4 py-3">Дата создания</th>
+              <th className="px-4 py-3">Действия</th>
             </tr>
           </thead>
           <tbody>
             {courses.map((course) => (
-              <tr key={course.id} className="border-b border-slate-100">
-                <td className="py-3 pr-3">{course.title}</td>
-                <td className="py-3 pr-3">
-                  {getCourseLevelLabel(course.level)}
+              <tr
+                key={course.id}
+                className="border-b border-slate-100 hover:bg-slate-50"
+              >
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded bg-blue-100">
+                      <BookOpen className="h-5 w-5 text-blue-700" />
+                    </div>
+                    <span className="text-sm font-medium text-slate-900">
+                      {course.title}
+                    </span>
+                  </div>
                 </td>
-                <td className="py-3 pr-3">
-                  {course.isPublished ? "Опубликован" : "Скрыт"}
+                <td className="px-4 py-3">
+                  {course.isPublished ? (
+                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
+                      Активен
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                      Черновик
+                    </span>
+                  )}
                 </td>
-                <td className="py-3 pr-3">
-                  <div className="flex flex-wrap gap-3">
+                <td className="px-4 py-3 text-sm text-slate-700">
+                  {course.studentsCount ?? 0}
+                </td>
+                <td className="px-4 py-3 text-sm text-slate-600">
+                  {new Date(course.createdAt).toLocaleDateString("ru-RU")}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Link
                       href={`/dashboard/teacher/courses/${course.id}`}
-                      className="text-blue-700 hover:underline"
+                      className="rounded border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                     >
-                      Открыть
+                      Просмотр
                     </Link>
-                    <button
-                      type="button"
-                      onClick={() => openEditModal(course)}
-                      className="text-blue-700 hover:underline"
-                    >
-                      Редактировать
-                    </button>
                     {course.isPublished ? (
                       <button
-                        className="text-amber-700 hover:underline"
+                        className="rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
                         disabled={busyCourseId === course.id}
                         onClick={() => void updateVisibility(course.id, false)}
                       >
@@ -338,7 +274,7 @@ export default function TeacherCoursesPage() {
                       </button>
                     ) : (
                       <button
-                        className="text-emerald-700 hover:underline"
+                        className="rounded border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
                         disabled={busyCourseId === course.id}
                         onClick={() => void updateVisibility(course.id, true)}
                       >
@@ -348,9 +284,11 @@ export default function TeacherCoursesPage() {
                     <button
                       type="button"
                       onClick={() => openDeleteModal(course.id, course.title)}
-                      className="text-rose-600 hover:underline"
+                      className="inline-flex items-center justify-center rounded border border-rose-200 bg-rose-50 px-3 py-1.5 text-rose-700 hover:bg-rose-100"
+                      aria-label="Удалить курс"
+                      title="Удалить"
                     >
-                      Удалить
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </td>
@@ -379,7 +317,7 @@ export default function TeacherCoursesPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-6">
           <div className="w-full max-w-xl rounded-xl bg-white p-4 shadow-xl sm:p-6">
             <div className="flex items-start justify-between gap-3">
-              <h2 className="text-lg font-semibold">Редактирование курса</h2>
+              <h2 className="text-lg font-semibold">Просмотр курса</h2>
               <button
                 type="button"
                 onClick={closeEditModal}
@@ -388,47 +326,31 @@ export default function TeacherCoursesPage() {
                 Закрыть
               </button>
             </div>
+          </div>
+          <div className="mt-4 grid gap-4">
+            <div>
+              <label className="text-sm font-medium text-slate-700">
+                Название курса
+              </label>
+              <p className="mt-1 text-sm text-slate-900">{editTitle}</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">
+                Уровень
+              </label>
+              <p className="mt-1 text-sm text-slate-900">
+                {getCourseLevelLabel(editLevel)}
+              </p>
+            </div>
 
-            <div className="mt-4 grid gap-3">
-              <input
-                className="rounded border border-slate-300 px-3 py-2"
-                value={editTitle}
-                onChange={(event) => setEditTitle(event.target.value)}
-                placeholder="Название"
-              />
-              <select
-                className="rounded border border-slate-300 px-3 py-2"
-                value={editLevel}
-                onChange={(event) =>
-                  setEditLevel(event.target.value as CourseItem["level"])
-                }
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeEditModal}
+                className="rounded bg-slate-100 px-4 py-2 text-sm text-slate-700 hover:bg-slate-200"
               >
-                <option value="beginner">Начальный</option>
-                <option value="intermediate">Средний</option>
-                <option value="advanced">Продвинутый</option>
-              </select>
-
-              {editError ? (
-                <p className="text-sm text-rose-600">{editError}</p>
-              ) : null}
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => void saveCourseEdit()}
-                  disabled={isSavingEdit}
-                  className="rounded bg-blue-700 px-4 py-2 text-sm text-white hover:bg-blue-800 disabled:opacity-60"
-                >
-                  {isSavingEdit ? "Сохранение..." : "Сохранить"}
-                </button>
-                <button
-                  type="button"
-                  onClick={closeEditModal}
-                  className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
-                >
-                  Отмена
-                </button>
-              </div>
+                Закрыть
+              </button>
             </div>
           </div>
         </div>

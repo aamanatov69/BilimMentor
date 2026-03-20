@@ -1,11 +1,54 @@
 ﻿"use client";
 
-import { Bell, LogOut, Menu, ShieldAlert, UserCircle2, X } from "lucide-react";
+import {
+  Bell,
+  BookOpen,
+  FileBarChart,
+  Home,
+  LogOut,
+  Search,
+  Settings,
+  ShieldAlert,
+  ShieldCheck,
+  UserCog,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+type MeResponse = {
+  user?: {
+    id?: string;
+    fullName?: string;
+    role?: "student" | "teacher" | "admin";
+  };
+};
+
+const sidebarItems = [
+  { href: "/dashboard/admin", label: "Главная", icon: Home, exact: true },
+  { href: "/dashboard/admin/users", label: "Пользователи", icon: Users },
+  { href: "/dashboard/admin/courses", label: "Курсы", icon: BookOpen },
+  { href: "/dashboard/admin/reports", label: "Отчеты", icon: FileBarChart },
+  { href: "/dashboard/admin/requests", label: "Заявки", icon: UserCog },
+  { href: "/dashboard/admin/system", label: "Система", icon: ShieldCheck },
+  { href: "/dashboard/admin/settings", label: "Настройки", icon: Settings },
+  {
+    href: "/dashboard/admin/notifications",
+    label: "Уведомления",
+    icon: Bell,
+  },
+];
+
+const emphasizedNavHrefs = new Set([
+  "/dashboard/admin/reports",
+  "/dashboard/admin/requests",
+  "/dashboard/admin/system",
+  "/dashboard/admin/settings",
+  "/dashboard/admin/notifications",
+]);
 
 export default function AdminLayout({
   children,
@@ -14,202 +57,310 @@ export default function AdminLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [adminName, setAdminName] = useState("Администратор");
+  const [hasNewNotifications, setHasNewNotifications] = useState(false);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [hasPendingRequests, setHasPendingRequests] = useState(false);
+  const hasAnyMenuAlerts = hasNewNotifications || hasPendingRequests;
 
-  const navClass = (href: string, exact = false, mobile = false) => {
-    const isActive = exact
+  const adminInitials =
+    adminName
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "А";
+
+  const isActivePath = (href: string, exact = false) =>
+    exact
       ? pathname === href
       : pathname === href || pathname.startsWith(`${href}/`);
 
-    if (mobile) {
-      return isActive
-        ? "rounded-md bg-blue-100 px-3 py-2 font-medium text-blue-700"
-        : "rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100 hover:text-blue-700";
+  const desktopNavClass = (href: string, exact = false, emphasized = false) => {
+    if (isActivePath(href, exact)) {
+      return "flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-800 px-3 py-2.5 text-sm font-semibold text-white shadow-sm";
     }
 
-    return isActive
-      ? "whitespace-nowrap rounded-md bg-blue-100 px-2 py-1 font-medium text-blue-700"
-      : "whitespace-nowrap rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100 hover:text-blue-700";
+    if (emphasized) {
+      return "flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100";
+    }
+
+    return "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100";
   };
 
-  useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [pathname]);
+  const mobileNavClass = (href: string, exact = false) =>
+    isActivePath(href, exact)
+      ? "flex items-center gap-2 rounded-md bg-slate-800 px-3 py-2 text-sm font-semibold text-white"
+      : "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100";
 
   useEffect(() => {
-    if (!mobileMenuOpen) {
-      return;
-    }
+    let cancelled = false;
 
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setMobileMenuOpen(false);
+    const loadAdminProfile = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/me`, {
+          credentials: "include",
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = (await response.json()) as MeResponse;
+        const fullName = data.user?.fullName?.trim();
+
+        if (!cancelled && fullName) {
+          setAdminName(fullName);
+        }
+      } catch {
+        // Keep default fallback name when profile request fails.
       }
     };
 
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", handleEscape);
+    void loadAdminProfile();
 
     return () => {
-      document.body.style.overflow = originalOverflow;
-      window.removeEventListener("keydown", handleEscape);
+      cancelled = true;
     };
-  }, [mobileMenuOpen]);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const refreshIndicators = async () => {
+      try {
+        const [notificationsResponse, unreadCountResponse, reportsResponse] =
+          await Promise.all([
+            fetch(`${API_URL}/api/notifications`, {
+              credentials: "include",
+            }),
+            fetch(`${API_URL}/api/notifications/unread-count`, {
+              credentials: "include",
+            }),
+            fetch(`${API_URL}/api/admin/reports`, {
+              credentials: "include",
+            }),
+          ]);
+
+        if (!notificationsResponse.ok) {
+          if (!cancelled) {
+            setHasNewNotifications(false);
+          }
+        } else {
+          const notificationsData = (await notificationsResponse.json()) as {
+            notifications?: Array<{ createdAt?: string }>;
+          };
+          if (!cancelled) {
+            setHasNewNotifications(
+              Boolean(notificationsData.notifications?.[0]?.createdAt),
+            );
+          }
+        }
+
+        if (unreadCountResponse.ok) {
+          const countData = (await unreadCountResponse.json()) as {
+            unreadCount?: number;
+          };
+          if (!cancelled) {
+            setUnreadNotificationCount(countData.unreadCount ?? 0);
+          }
+        }
+
+        if (!reportsResponse.ok) {
+          if (!cancelled) {
+            setHasPendingRequests(false);
+          }
+          return;
+        }
+
+        const reportsData = (await reportsResponse.json()) as {
+          summary?: { accessRequestsPending?: number };
+        };
+        if (!cancelled) {
+          setHasPendingRequests(
+            (reportsData.summary?.accessRequestsPending ?? 0) > 0,
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setHasNewNotifications(false);
+          setHasPendingRequests(false);
+        }
+      }
+    };
+
+    void refreshIndicators();
+    const refreshInterval = window.setInterval(refreshIndicators, 60_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(refreshInterval);
+    };
+  }, [pathname]);
 
   return (
-    <div className="min-h-screen bg-slate-100 p-3 text-slate-800 sm:p-4 md:p-6">
-      <div className="mx-auto max-w-7xl space-y-4">
-        <header className="relative z-30 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-700 text-white">
-                <ShieldAlert className="h-4 w-4" />
-              </div>
-              <p className="truncate text-xs font-semibold tracking-wide text-blue-700 sm:text-sm">
-                ПАНЕЛЬ АДМИНИСТРАТОРА
+    <div className="min-h-screen bg-slate-100 text-slate-800">
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-[1400px] items-center gap-3 px-3 py-2.5 sm:px-4 lg:px-5">
+          <div className="flex min-w-0 items-center gap-2 sm:w-52">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-slate-800 text-white">
+              <ShieldAlert className="h-5 w-5" />
+            </span>
+            <div className="leading-tight">
+              <p className="text-sm font-extrabold tracking-wide text-slate-800">
+                Панель администратора
               </p>
-            </div>
-            <nav className="hidden items-center justify-center gap-2 overflow-x-auto text-sm md:flex">
-              <Link
-                className={navClass("/dashboard/admin", true)}
-                href="/dashboard/admin"
-              >
-                Главная
-              </Link>
-              <Link
-                className={navClass("/dashboard/admin/users")}
-                href="/dashboard/admin/users"
-              >
-                Пользователи
-              </Link>
-              <Link
-                className={navClass("/dashboard/admin/courses")}
-                href="/dashboard/admin/courses"
-              >
-                Курсы
-              </Link>
-              <Link
-                className={navClass("/dashboard/admin/reports")}
-                href="/dashboard/admin/reports"
-              >
-                Отчеты
-              </Link>
-              <Link
-                className={navClass("/dashboard/admin/system")}
-                href="/dashboard/admin/system"
-              >
-                Система
-              </Link>
-              <Link
-                className={navClass("/dashboard/admin/settings")}
-                href="/dashboard/admin/settings"
-              >
-                Настройки
-              </Link>
-              <Link
-                className={navClass("/dashboard/admin/notifications")}
-                href="/dashboard/admin/notifications"
-              >
-                Уведомления
-              </Link>
-            </nav>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="rounded-md border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50 md:hidden"
-                onClick={() => setMobileMenuOpen((prev) => !prev)}
-                aria-label={mobileMenuOpen ? "Закрыть меню" : "Открыть меню"}
-              >
-                {mobileMenuOpen ? (
-                  <X className="h-4 w-4" />
-                ) : (
-                  <Menu className="h-4 w-4" />
-                )}
-              </button>
-              <Bell className="hidden h-4 w-4 text-slate-500 sm:block" />
-              <button
-                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                onClick={async () => {
-                  await fetch(`${API_URL}/api/auth/logout`, {
-                    method: "POST",
-                    credentials: "include",
-                  });
-                  router.replace("/");
-                }}
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  <LogOut className="h-4 w-4" />
-                  Выйти
-                </span>
-              </button>
-              <UserCircle2 className="hidden h-8 w-8 text-slate-500 sm:block" />
+              <p className="text-[11px] font-semibold text-slate-500"></p>
             </div>
           </div>
 
-          {mobileMenuOpen ? (
-            <nav className="mt-3 grid gap-1 border-t border-slate-200 pt-3 text-sm md:hidden">
-              <Link
-                className={navClass("/dashboard/admin", true, true)}
-                href="/dashboard/admin"
-              >
-                Главная
-              </Link>
-              <Link
-                className={navClass("/dashboard/admin/users", false, true)}
-                href="/dashboard/admin/users"
-              >
-                Пользователи
-              </Link>
-              <Link
-                className={navClass("/dashboard/admin/courses", false, true)}
-                href="/dashboard/admin/courses"
-              >
-                Курсы
-              </Link>
-              <Link
-                className={navClass("/dashboard/admin/reports", false, true)}
-                href="/dashboard/admin/reports"
-              >
-                Отчеты
-              </Link>
-              <Link
-                className={navClass("/dashboard/admin/system", false, true)}
-                href="/dashboard/admin/system"
-              >
-                Система
-              </Link>
-              <Link
-                className={navClass("/dashboard/admin/settings", false, true)}
-                href="/dashboard/admin/settings"
-              >
-                Настройки
-              </Link>
-              <Link
-                className={navClass(
-                  "/dashboard/admin/notifications",
-                  false,
-                  true,
-                )}
-                href="/dashboard/admin/notifications"
-              >
-                Уведомления
-              </Link>
-            </nav>
-          ) : null}
-        </header>
+          <div className="hidden flex-1 items-center rounded-md border border-slate-300 bg-slate-100 px-3 py-2 md:flex">
+            <Search className="h-4 w-4 text-slate-500" />
+            <span className="ml-2 text-sm text-slate-500">Поиск</span>
+          </div>
 
-        {mobileMenuOpen ? (
-          <button
-            type="button"
-            className="fixed inset-0 z-20 bg-slate-900/25 md:hidden"
-            onClick={() => setMobileMenuOpen(false)}
-            aria-label="Закрыть меню"
-          />
-        ) : null}
+          <div className="ml-auto flex items-center gap-3 text-sm font-semibold text-slate-700">
+            {hasAnyMenuAlerts ? (
+              <span className="hidden h-2.5 w-2.5 rounded-full bg-rose-500 sm:inline-flex" />
+            ) : (
+              <span className="hidden h-2.5 w-2.5 rounded-full bg-emerald-500 sm:inline-flex" />
+            )}
+            <span className="hidden sm:inline-flex">{adminName}</span>
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-slate-700">
+              {adminInitials}
+            </span>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 sm:px-3 sm:text-sm"
+              onClick={async () => {
+                await fetch(`${API_URL}/api/auth/logout`, {
+                  method: "POST",
+                  credentials: "include",
+                });
+                router.replace("/");
+              }}
+            >
+              <LogOut className="h-4 w-4" />
+              Logout
+            </button>
+          </div>
+        </div>
+      </header>
 
-        {children}
+      <div className="mx-auto flex max-w-[1400px] gap-0 px-0 lg:px-0">
+        <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white p-4 lg:block">
+          <nav className="space-y-1">
+            {sidebarItems.map((item) => {
+              const Icon = item.icon;
+              const isEmphasized = emphasizedNavHrefs.has(item.href);
+              const showDot =
+                item.href === "/dashboard/admin/requests" && hasPendingRequests;
+              const showBadge =
+                item.href === "/dashboard/admin/notifications" &&
+                unreadNotificationCount > 0;
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={desktopNavClass(
+                    item.href,
+                    item.exact,
+                    isEmphasized,
+                  )}
+                >
+                  <span
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-md ${
+                      isActivePath(item.href, item.exact)
+                        ? "bg-white/15"
+                        : "bg-slate-200/80"
+                    }`}
+                  >
+                    <Icon
+                      className={`h-4 w-4 ${
+                        isActivePath(item.href, item.exact)
+                          ? "text-white"
+                          : "text-slate-700"
+                      }`}
+                    />
+                  </span>
+                  <span className="flex items-center gap-2">
+                    {item.label}
+                    {showDot ? (
+                      <span className="h-2 w-2 rounded-full bg-rose-500" />
+                    ) : null}
+                    {showBadge ? (
+                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white">
+                        {unreadNotificationCount}
+                      </span>
+                    ) : null}
+                  </span>
+                </Link>
+              );
+            })}
+          </nav>
+        </aside>
+
+        <main className="min-w-0 flex-1 p-3 sm:p-4 lg:p-5">{children}</main>
       </div>
+
+      <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white lg:hidden">
+        <div className="flex items-center justify-around gap-0">
+          {sidebarItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = isActivePath(item.href, item.exact);
+            const isEmphasized = emphasizedNavHrefs.has(item.href);
+            const showDot =
+              item.href === "/dashboard/admin/requests" && hasPendingRequests;
+            const showBadge =
+              item.href === "/dashboard/admin/notifications" &&
+              unreadNotificationCount > 0;
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex flex-1 flex-col items-center justify-center gap-1 border-0 px-1 py-2.5 text-center ${
+                  isEmphasized ? "rounded-lg" : "rounded-none"
+                }`}
+              >
+                <div
+                  className={`relative inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+                    isActive
+                      ? "bg-slate-800"
+                      : isEmphasized
+                        ? "bg-slate-100"
+                        : "bg-transparent"
+                  }`}
+                >
+                  <Icon
+                    className={`h-4.5 w-4.5 transition-colors ${
+                      isActive ? "text-white" : "text-slate-600"
+                    }`}
+                  />
+                  {showDot ? (
+                    <span className="absolute -right-1.5 -top-1.5 h-2 w-2 rounded-full bg-rose-500" />
+                  ) : null}
+                  {showBadge ? (
+                    <span className="absolute -right-2 -top-2 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
+                      {unreadNotificationCount}
+                    </span>
+                  ) : null}
+                </div>
+                <span
+                  className={`text-[9px] font-semibold leading-3 transition-colors ${
+                    isActive ? "text-slate-900" : "text-slate-600"
+                  }`}
+                >
+                  {item.label}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+
+      <div className="h-20 lg:hidden" />
     </div>
   );
 }

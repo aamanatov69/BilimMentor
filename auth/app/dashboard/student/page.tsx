@@ -61,15 +61,14 @@ export default function StudentDashboardPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-
     const loadData = async () => {
       try {
         const [meRes, overviewRes] = await Promise.all([
           fetch(`${API_URL}/api/me`, {
-          credentials: "include",
+            credentials: "include",
           }),
           fetch(`${API_URL}/api/student/overview`, {
-          credentials: "include",
+            credentials: "include",
           }),
         ]);
 
@@ -107,39 +106,56 @@ export default function StudentDashboardPage() {
 
   const dueSoon = overview?.summary.dueSoon ?? false;
 
+  const currentCourses = overview?.currentCourses ?? [];
+  const assignments = overview?.assignments ?? [];
+  const recentGrades = overview?.recentGrades ?? [];
+  const announcements = overview?.announcements ?? [];
+
   return (
-    <main className="space-y-4">
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-        <h1 className="text-2xl font-semibold sm:text-3xl">
+    <main className="space-y-3 lg:space-y-4">
+      <h1 className="text-xl font-bold leading-none text-slate-900 sm:text-2xl lg:text-[38px]">
+        Рабочий стол
+      </h1>
+
+      <section className="rounded-lg border border-slate-300 bg-white px-3 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.08)] sm:px-4 sm:py-3.5 lg:rounded-[10px] lg:px-5 lg:py-4">
+        <h2 className="text-base font-semibold text-slate-900 sm:text-lg lg:text-2xl">
           Добро пожаловать, {displayName}!
-        </h1>
-        <p className="mt-2 text-slate-600">
+        </h2>
+        <p className="mt-1 text-sm text-slate-600 lg:text-base">
           Краткая информация о вашем учебном процессе.
         </p>
-        {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+        {error ? (
+          <p className="mt-2 rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {error}
+          </p>
+        ) : null}
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">Мои курсы</p>
-          <p className="mt-2 text-3xl font-semibold text-blue-700">
+      <section className="grid grid-cols-2 gap-2 md:grid-cols-2 lg:grid-cols-4 lg:gap-3">
+        <article className="rounded-lg border border-slate-300 bg-white px-3 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.08)] sm:px-4 sm:py-3.5 lg:rounded-[10px] lg:px-5 lg:py-4">
+          <p className="text-[10px] font-semibold leading-3 text-slate-700 sm:text-xs lg:text-[17px] lg:leading-5">
+            Мои курсы
+          </p>
+          <p className="mt-2 text-lg font-extrabold leading-none text-slate-900 sm:text-2xl lg:text-3xl">
             {overview?.summary.courses ?? 0}
           </p>
           <Link
             href="/dashboard/student/courses"
-            className="mt-2 inline-block text-sm text-blue-700 hover:underline"
+            className="mt-2 inline-flex rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 sm:text-sm"
           >
-            Открыть список курсов
+            Открыть курсы
           </Link>
         </article>
 
-        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">Задания к сдаче</p>
+        <article className="rounded-lg border border-slate-300 bg-white px-3 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.08)] sm:px-4 sm:py-3.5 lg:rounded-[10px] lg:px-5 lg:py-4">
+          <p className="text-[10px] font-semibold leading-3 text-slate-700 sm:text-xs lg:text-[17px] lg:leading-5">
+            Задания к сдаче
+          </p>
           <p
             className={
               dueSoon
-                ? "mt-2 text-3xl font-semibold text-rose-600"
-                : "mt-2 text-3xl font-semibold text-slate-800"
+                ? "mt-2 text-lg font-extrabold leading-none text-rose-600 sm:text-2xl lg:text-3xl"
+                : "mt-2 text-lg font-extrabold leading-none text-slate-900 sm:text-2xl lg:text-3xl"
             }
           >
             {overview?.summary.assignments ?? 0}
@@ -155,44 +171,64 @@ export default function StudentDashboardPage() {
           </p>
         </article>
 
-        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">Средний балл (GPA)</p>
-          <p className="mt-2 text-3xl font-semibold text-emerald-600">
+        <article className="rounded-lg border border-slate-300 bg-white px-3 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.08)] sm:px-4 sm:py-3.5 lg:rounded-[10px] lg:px-5 lg:py-4">
+          <p className="text-[10px] font-semibold leading-3 text-slate-700 sm:text-xs lg:text-[17px] lg:leading-5">
+            Средний балл (GPA)
+          </p>
+          <p className="mt-2 text-lg font-extrabold leading-none text-emerald-600 sm:text-2xl lg:text-3xl">
             {overview?.summary.gpa ?? 0}
           </p>
           <p className="mt-2 text-sm text-slate-600">Средний балл</p>
         </article>
+
+        <article className="rounded-lg border border-slate-300 bg-white px-3 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.08)] sm:px-4 sm:py-3.5 lg:rounded-[10px] lg:px-5 lg:py-4">
+          <p className="text-[10px] font-semibold leading-3 text-slate-700 sm:text-xs lg:text-[17px] lg:leading-5">
+            Объявления
+          </p>
+          <p className="mt-2 text-lg font-extrabold leading-none text-slate-900 sm:text-2xl lg:text-3xl">
+            {announcements.length}
+          </p>
+          <p className="mt-2 text-sm text-slate-600">
+            Актуальные новости курса
+          </p>
+        </article>
       </section>
 
-      <section className="grid gap-3 md:grid-cols-2">
-        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="font-semibold">Текущие курсы</h2>
+      <section className="grid grid-cols-1 gap-3 lg:grid-cols-[2fr_1fr] lg:gap-4">
+        <article className="rounded-lg border border-slate-300 bg-white p-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)] sm:p-2.5 lg:rounded-[10px] lg:p-3">
+          <h2 className="mb-2 px-0.5 text-base font-semibold leading-none text-slate-900 sm:mb-2.5 sm:text-lg lg:mb-3 lg:px-1 lg:text-2xl">
+            Текущие курсы
+          </h2>
           <div
             className={
-              (overview?.currentCourses ?? []).length > 4
-                ? "mt-4 max-h-[420px] space-y-3 overflow-y-auto pr-1 text-sm"
-                : "mt-4 space-y-3 text-sm"
+              currentCourses.length > 4
+                ? "max-h-[420px] space-y-2.5 overflow-y-auto pr-1 text-sm lg:space-y-3"
+                : "space-y-2.5 text-sm lg:space-y-3"
             }
           >
-            {(overview?.currentCourses ?? []).length ? (
-              (overview?.currentCourses ?? []).map((course) => (
+            {currentCourses.length ? (
+              currentCourses.map((course) => (
                 <div
                   key={course.id}
-                  className="rounded-md border border-slate-200 p-3"
+                  className="rounded-md border border-slate-300 bg-slate-50 px-2.5 py-2 lg:rounded-lg lg:px-3 lg:py-2"
                 >
-                  <p className="break-words font-medium">{course.name}</p>
-                  <p className="text-xs text-slate-500">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <p className="break-words text-sm font-semibold text-slate-900 lg:text-base">
+                      {course.name}
+                    </p>
+                    <p className="whitespace-nowrap text-xs text-slate-700">
+                      {course.progress}%
+                    </p>
+                  </div>
+                  <p className="text-xs text-slate-500 lg:text-sm">
                     Преподаватель: {course.teacher}
                   </p>
-                  <p className="text-xs text-slate-600">
+                  <p className="text-xs text-slate-600 lg:text-sm">
                     Статус: {course.status}
-                  </p>
-                  <p className="text-xs text-slate-600">
-                    Прогресс: {course.progress}%
                   </p>
                   <div className="mt-2 h-1.5 w-full rounded-full bg-slate-200">
                     <div
-                      className="h-1.5 rounded-full bg-blue-600"
+                      className="h-1.5 rounded-full bg-slate-700"
                       style={{
                         width: `${Math.max(0, Math.min(100, course.progress))}%`,
                       }}
@@ -208,30 +244,36 @@ export default function StudentDashboardPage() {
           </div>
         </article>
 
-        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="font-semibold">Задания к сдаче</h2>
+        <article className="rounded-lg border border-slate-300 bg-white p-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)] sm:p-2.5 lg:rounded-[10px] lg:p-3">
+          <h2 className="mb-2 text-base font-semibold leading-none text-slate-900 sm:mb-2.5 sm:text-lg lg:mb-3 lg:text-2xl">
+            Задания к сдаче
+          </h2>
           <div
             className={
-              (overview?.assignments ?? []).length > 4
-                ? "mt-4 max-h-[420px] space-y-3 overflow-y-auto pr-1 text-sm"
-                : "mt-4 space-y-3 text-sm"
+              assignments.length > 4
+                ? "max-h-[420px] space-y-2.5 overflow-y-auto pr-1 text-sm lg:space-y-3"
+                : "space-y-2.5 text-sm lg:space-y-3"
             }
           >
-            {(overview?.assignments ?? []).length ? (
-              (overview?.assignments ?? []).map((item) => (
+            {assignments.length ? (
+              assignments.map((item) => (
                 <div
                   key={item.id}
-                  className="rounded-md border border-slate-200 p-3"
+                  className="rounded-md border border-slate-300 bg-slate-50 px-2.5 py-2 lg:rounded-lg lg:px-3 lg:py-2"
                 >
-                  <p className="break-words font-medium">{item.title}</p>
-                  <p className="text-xs text-slate-500">Курс: {item.course}</p>
-                  <p className="text-xs text-slate-600">
+                  <p className="break-words text-sm font-semibold text-slate-900 lg:text-base">
+                    {item.title}
+                  </p>
+                  <p className="text-xs text-slate-500 lg:text-sm">
+                    Курс: {item.course}
+                  </p>
+                  <p className="text-xs text-slate-600 lg:text-sm">
                     Дата сдачи:{" "}
                     {item.dueDate
                       ? new Date(item.dueDate).toLocaleDateString()
                       : "Не указана"}
                   </p>
-                  <p className="text-xs text-slate-600">
+                  <p className="text-xs text-slate-600 lg:text-sm">
                     Статус: {item.status}
                   </p>
                 </div>
@@ -242,27 +284,33 @@ export default function StudentDashboardPage() {
           </div>
         </article>
 
-        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="font-semibold">Последние оценки</h2>
+        <article className="rounded-lg border border-slate-300 bg-white p-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)] sm:p-2.5 lg:rounded-[10px] lg:p-3">
+          <h2 className="mb-2 text-base font-semibold leading-none text-slate-900 sm:mb-2.5 sm:text-lg lg:mb-3 lg:text-2xl">
+            Последние оценки
+          </h2>
           <div
             className={
-              (overview?.recentGrades ?? []).length > 4
-                ? "mt-4 max-h-[420px] space-y-3 overflow-y-auto pr-1 text-sm"
-                : "mt-4 space-y-3 text-sm"
+              recentGrades.length > 4
+                ? "max-h-[420px] space-y-2.5 overflow-y-auto pr-1 text-sm lg:space-y-3"
+                : "space-y-2.5 text-sm lg:space-y-3"
             }
           >
-            {(overview?.recentGrades ?? []).length ? (
-              (overview?.recentGrades ?? []).map((item) => (
+            {recentGrades.length ? (
+              recentGrades.map((item) => (
                 <div
                   key={item.id}
-                  className="rounded-md border border-slate-200 p-3"
+                  className="rounded-md border border-slate-300 bg-slate-50 px-2.5 py-2 lg:rounded-lg lg:px-3 lg:py-2"
                 >
-                  <p className="break-words font-medium">{item.assignment}</p>
-                  <p className="text-xs text-slate-500">Курс: {item.course}</p>
-                  <p className="text-xs text-slate-700">
+                  <p className="break-words text-sm font-semibold text-slate-900 lg:text-base">
+                    {item.assignment}
+                  </p>
+                  <p className="text-xs text-slate-500 lg:text-sm">
+                    Курс: {item.course}
+                  </p>
+                  <p className="text-xs text-slate-700 lg:text-sm">
                     Оценка: {item.grade ?? "Не оценено"}
                   </p>
-                  <p className="break-words text-xs text-slate-600">
+                  <p className="break-words text-xs text-slate-600 lg:text-sm">
                     Комментарий: {item.comment ?? "-"}
                   </p>
                 </div>
@@ -273,26 +321,30 @@ export default function StudentDashboardPage() {
           </div>
         </article>
 
-        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="font-semibold">Объявления</h2>
+        <article className="rounded-lg border border-slate-300 bg-white p-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)] sm:p-2.5 lg:rounded-[10px] lg:p-3">
+          <h2 className="mb-2 text-base font-semibold leading-none text-slate-900 sm:mb-2.5 sm:text-lg lg:mb-3 lg:text-2xl">
+            Объявления
+          </h2>
           <div
             className={
-              (overview?.announcements ?? []).length > 4
-                ? "mt-4 max-h-[420px] space-y-3 overflow-y-auto pr-1 text-sm"
-                : "mt-4 space-y-3 text-sm"
+              announcements.length > 4
+                ? "max-h-[420px] space-y-2.5 overflow-y-auto pr-1 text-sm lg:space-y-3"
+                : "space-y-2.5 text-sm lg:space-y-3"
             }
           >
-            {(overview?.announcements ?? []).length ? (
-              (overview?.announcements ?? []).map((item) => (
+            {announcements.length ? (
+              announcements.map((item) => (
                 <div
                   key={item.id}
-                  className="rounded-md border border-slate-200 p-3"
+                  className="rounded-md border border-slate-300 bg-slate-50 px-2.5 py-2 lg:rounded-lg lg:px-3 lg:py-2"
                 >
-                  <p className="break-words font-medium">{item.title}</p>
-                  <p className="break-words text-xs text-slate-600">
+                  <p className="break-words text-sm font-semibold text-slate-900 lg:text-base">
+                    {item.title}
+                  </p>
+                  <p className="break-words text-xs text-slate-600 lg:text-sm">
                     {item.text}
                   </p>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-slate-500 lg:text-sm">
                     {new Date(item.date).toLocaleString()}
                   </p>
                 </div>

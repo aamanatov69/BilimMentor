@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { CheckCircle2, Plus, Save } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
@@ -7,7 +8,7 @@ import { type FormEvent, useState } from "react";
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const MAX_LESSON_FILE_SIZE_BYTES = 20 * 1024 * 1024;
 
-type Step = 1 | 2;
+type CourseLevel = "beginner" | "intermediate" | "advanced";
 
 type LessonUploadFile = {
   name: string;
@@ -15,6 +16,12 @@ type LessonUploadFile = {
   size: number;
   dataBase64: string;
 };
+
+function getCourseLevelLabel(level: CourseLevel) {
+  if (level === "beginner") return "Начальный";
+  if (level === "intermediate") return "Средний";
+  return "Продвинутый";
+}
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -40,9 +47,9 @@ function detectMaterialTypeFromMime(mimeType: string) {
 export default function NewTeacherCoursePage() {
   const router = useRouter();
 
-  const [step, setStep] = useState<Step>(1);
   const [courseTitle, setCourseTitle] = useState("");
   const [courseDescription, setCourseDescription] = useState("");
+  const [courseLevel, setCourseLevel] = useState<CourseLevel>("beginner");
 
   const [lessonTitle, setLessonTitle] = useState("");
   const [lessonLecture, setLessonLecture] = useState("");
@@ -56,19 +63,6 @@ export default function NewTeacherCoursePage() {
 
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-
-  const goNext = () => {
-    if (!courseTitle.trim()) {
-      setError("Введите название курса");
-      return;
-    }
-    if (!courseDescription.trim()) {
-      setError("Введите описание курса");
-      return;
-    }
-    setError("");
-    setStep(2);
-  };
 
   const updateLessonLink = (index: number, value: string) => {
     setLessonLinks((prev) =>
@@ -143,7 +137,7 @@ export default function NewTeacherCoursePage() {
           body: JSON.stringify({
             title: courseTitle.trim(),
             description: courseDescription.trim(),
-            level: "beginner",
+            level: courseLevel,
             publishNow: false,
           }),
         },
@@ -278,236 +272,288 @@ export default function NewTeacherCoursePage() {
   };
 
   return (
-    <main className="max-w-3xl rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold sm:text-2xl">Добавление курса</h1>
-        <Link
-          href="/dashboard/teacher/courses"
-          className="text-sm text-blue-700 hover:underline"
-        >
-          К списку курсов
-        </Link>
-      </div>
-
-      <div className="mt-4 grid gap-2 sm:grid-cols-2">
-        <div
-          className={
-            step === 1
-              ? "rounded border border-blue-300 bg-blue-50 p-3"
-              : "rounded border border-slate-200 bg-slate-50 p-3"
-          }
-        >
-          <p className="text-sm font-semibold">Шаг 1</p>
-          <p className="text-sm text-slate-600">Название и описание курса</p>
-        </div>
-        <div
-          className={
-            step === 2
-              ? "rounded border border-blue-300 bg-blue-50 p-3"
-              : "rounded border border-slate-200 bg-slate-50 p-3"
-          }
-        >
-          <p className="text-sm font-semibold">Шаг 2</p>
-          <p className="text-sm text-slate-600">Создание первого урока</p>
-        </div>
-      </div>
-
-      {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
-
-      {step === 1 ? (
-        <section className="mt-4 space-y-3 rounded border border-slate-200 p-4">
-          <h2 className="text-lg font-semibold">Данные курса</h2>
-          <input
-            className="w-full rounded border border-slate-300 px-3 py-2"
-            placeholder="Название курса"
-            value={courseTitle}
-            onChange={(event) => setCourseTitle(event.target.value)}
-          />
-          <textarea
-            className="min-h-32 w-full rounded border border-slate-300 px-3 py-2"
-            placeholder="Описание курса"
-            value={courseDescription}
-            onChange={(event) => setCourseDescription(event.target.value)}
-          />
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={goNext}
-              className="rounded bg-blue-700 px-4 py-2 text-white hover:bg-blue-800"
-            >
-              Далее
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      {step === 2 ? (
-        <form
-          onSubmit={onSubmit}
-          className="mt-4 space-y-4 rounded border border-slate-200 p-4"
-        >
-          <h2 className="text-lg font-semibold">Добавление урока</h2>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">
-              Название урока
-            </label>
-            <input
-              className="w-full rounded border border-slate-300 px-3 py-2"
-              placeholder="Например: Введение в Python"
-              value={lessonTitle}
-              onChange={(event) => setLessonTitle(event.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">Лекция</label>
-            <textarea
-              className="min-h-24 w-full rounded border border-slate-300 px-3 py-2"
-              placeholder="Текст лекции"
-              value={lessonLecture}
-              onChange={(event) => setLessonLecture(event.target.value)}
-            />
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setShowLinkInputs(true);
-                setLessonLinks((prev) => [...prev, ""]);
-              }}
-              className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
-            >
-              Добавить ссылку
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowFileInput((prev) => !prev)}
-              className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
-            >
-              Добавить файлы
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowAssignmentInput((prev) => !prev)}
-              className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
-            >
-              Добавить задание
-            </button>
-          </div>
-
-          {showLinkInputs ? (
-            <div className="space-y-2 rounded border border-slate-200 p-3">
-              {lessonLinks.length === 0 ? (
-                <p className="text-xs text-slate-600">
-                  Нажмите "Добавить ссылку", чтобы добавить строку.
-                </p>
-              ) : (
-                lessonLinks.map((link, index) => (
-                  <div key={`new-link-${index + 1}`} className="flex gap-2">
-                    <input
-                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                      placeholder={`Ссылка ${index + 1}`}
-                      value={link}
-                      onChange={(event) =>
-                        updateLessonLink(index, event.target.value)
-                      }
-                    />
-                    <button
-                      type="button"
-                      className="rounded border border-rose-300 px-3 py-2 text-sm text-rose-700 hover:bg-rose-50"
-                      onClick={() => removeLessonLink(index)}
-                    >
-                      Убрать
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          ) : null}
-
-          {showFileInput ? (
-            <div className="rounded border border-slate-200 p-3">
-              <p className="text-xs text-slate-600">
-                Можно загружать фото, видео, PDF и другие типы файлов.
-              </p>
-              <input
-                type="file"
-                className="mt-2 w-full text-sm"
-                multiple
-                onChange={(event) =>
-                  handleLessonFilesChange(event.target.files)
-                }
-              />
-              {lessonFiles.length > 0 ? (
-                <ul className="mt-2 space-y-1 text-sm">
-                  {lessonFiles.map((file, index) => (
-                    <li
-                      key={`${file.name}-${file.size}-${index}`}
-                      className="flex items-center justify-between gap-2"
-                    >
-                      <span>{file.name}</span>
-                      <button
-                        type="button"
-                        className="text-rose-600 hover:underline"
-                        onClick={() => removeLessonFile(index)}
-                      >
-                        Убрать
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          ) : null}
-
-          {showAssignmentInput ? (
-            <div className="space-y-2 rounded border border-slate-200 p-3">
-              <textarea
-                className="min-h-20 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Поле задания"
-                value={assignmentText}
-                onChange={(event) => setAssignmentText(event.target.value)}
-              />
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">
-                  Дедлайн задания
-                </label>
-                <input
-                  type="datetime-local"
-                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                  value={assignmentDueAt}
-                  onChange={(event) => setAssignmentDueAt(event.target.value)}
-                  required={
-                    showAssignmentInput && Boolean(assignmentText.trim())
-                  }
-                />
-              </div>
-            </div>
-          ) : null}
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="rounded border border-slate-300 px-4 py-2 hover:bg-slate-50"
-              onClick={() => {
-                setError("");
-                setStep(1);
-              }}
+    <form onSubmit={onSubmit}>
+      <main className="space-y-4 rounded-2xl bg-slate-50 p-3 text-slate-800 sm:p-4">
+        <header className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <h1 className="text-2xl font-semibold leading-tight">
+            Настройки курса & Создание уроков
+          </h1>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/dashboard/teacher/courses"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
             >
               Назад
-            </button>
+            </Link>
             <button
               type="submit"
               disabled={isSaving}
-              className="rounded bg-blue-700 px-4 py-2 text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-lg border border-blue-600 bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSaving ? "Сохранение..." : "Сохранить"}
+              <Save className="h-4 w-4" />
+              {isSaving ? "Сохранение..." : "Сохранить изменения"}
             </button>
           </div>
-        </form>
-      ) : null}
-    </main>
+        </header>
+
+        {error ? (
+          <p className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="grid gap-4 xl:grid-cols-[300px_1fr]">
+          <aside className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <h2 className="mb-3 text-2xl font-semibold">Управление уроками</h2>
+            <div className="space-y-2">
+              {lessonTitle.trim() ? (
+                <article className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                      <span className="text-lg font-medium">
+                        1. {lessonTitle}
+                      </span>
+                    </span>
+                  </div>
+                </article>
+              ) : (
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                  Добавьте первый урок
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setLessonTitle("");
+                setLessonLecture("");
+                setLessonLinks([]);
+                setLessonFiles([]);
+                setAssignmentText("");
+                setAssignmentDueAt("");
+                setShowLinkInputs(false);
+                setShowFileInput(false);
+                setShowAssignmentInput(false);
+              }}
+              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <Plus className="h-4 w-4" />
+              Добавить урок
+            </button>
+          </aside>
+
+          <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="grid overflow-hidden rounded-lg border border-slate-200 text-center text-lg font-semibold sm:grid-cols-2">
+              <p className="bg-slate-100 px-3 py-2 text-slate-800">
+                Информация о курсе
+              </p>
+              <p className="bg-blue-50 px-3 py-2 text-blue-700">
+                Структура и уроки
+              </p>
+            </div>
+
+            <div className="grid gap-3 xl:grid-cols-2">
+              <article className="rounded-lg border border-slate-200 bg-white p-3">
+                <label className="text-sm text-slate-600">Название курса</label>
+                <input
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400"
+                  placeholder="Название курса"
+                  value={courseTitle}
+                  onChange={(event) => setCourseTitle(event.target.value)}
+                />
+
+                <label className="mt-3 block text-sm text-slate-600">
+                  Описание курса
+                </label>
+                <textarea
+                  className="mt-1 min-h-28 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400"
+                  placeholder="Описание курса"
+                  value={courseDescription}
+                  onChange={(event) => setCourseDescription(event.target.value)}
+                />
+
+                <label className="mt-3 block text-sm text-slate-600">
+                  Уровень курса
+                </label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900"
+                  value={courseLevel}
+                  onChange={(event) =>
+                    setCourseLevel(event.target.value as CourseLevel)
+                  }
+                >
+                  <option value="beginner">
+                    {getCourseLevelLabel("beginner")}
+                  </option>
+                  <option value="intermediate">
+                    {getCourseLevelLabel("intermediate")}
+                  </option>
+                  <option value="advanced">
+                    {getCourseLevelLabel("advanced")}
+                  </option>
+                </select>
+
+                <label className="mt-3 block text-sm text-slate-600">
+                  Статус
+                </label>
+                <select className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900">
+                  <option>Черновик</option>
+                  <option>Активен</option>
+                </select>
+              </article>
+
+              <article className="rounded-lg border border-slate-200 bg-white p-3">
+                <label className="text-sm text-slate-600">Название урока</label>
+                <input
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400"
+                  placeholder="Название урока"
+                  value={lessonTitle}
+                  onChange={(event) => setLessonTitle(event.target.value)}
+                />
+
+                <label className="mt-3 block text-sm text-slate-600">
+                  Описание урока
+                </label>
+                <textarea
+                  className="mt-1 min-h-28 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400"
+                  placeholder="Лекция"
+                  value={lessonLecture}
+                  onChange={(event) => setLessonLecture(event.target.value)}
+                />
+
+                <label className="mt-3 block text-sm text-slate-600">
+                  Материалы урока
+                </label>
+                <div className="mt-1 rounded-lg border border-slate-300 bg-slate-50 p-3">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowLinkInputs(true);
+                        setLessonLinks((prev) => [...prev, ""]);
+                      }}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      Добавить ссылку
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowFileInput((prev) => !prev)}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      Добавить файлы
+                    </button>
+                  </div>
+
+                  {showLinkInputs ? (
+                    <div className="mt-2 space-y-2">
+                      {lessonLinks.length === 0 ? (
+                        <p className="text-xs text-slate-500">
+                          Нажмите "Добавить ссылку", чтобы добавить строку.
+                        </p>
+                      ) : (
+                        lessonLinks.map((link, index) => (
+                          <div
+                            key={`new-link-${index + 1}`}
+                            className="flex gap-2"
+                          >
+                            <input
+                              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                              placeholder={`Ссылка ${index + 1}`}
+                              value={link}
+                              onChange={(event) =>
+                                updateLessonLink(index, event.target.value)
+                              }
+                            />
+                            <button
+                              type="button"
+                              className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 hover:bg-rose-100"
+                              onClick={() => removeLessonLink(index)}
+                            >
+                              Убрать
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  ) : null}
+
+                  {showFileInput ? (
+                    <div className="mt-2 rounded-lg border border-slate-300 bg-white p-3">
+                      <p className="text-xs text-slate-500">
+                        Можно загружать фото, видео, PDF и другие типы файлов.
+                      </p>
+                      <input
+                        type="file"
+                        className="mt-2 w-full text-sm text-slate-700"
+                        multiple
+                        onChange={(event) =>
+                          handleLessonFilesChange(event.target.files)
+                        }
+                      />
+                      {lessonFiles.length > 0 ? (
+                        <ul className="mt-2 space-y-1 text-sm">
+                          {lessonFiles.map((file, index) => (
+                            <li
+                              key={`${file.name}-${file.size}-${index}`}
+                              className="flex items-center justify-between gap-2"
+                            >
+                              <span>{file.name}</span>
+                              <button
+                                type="button"
+                                className="text-rose-700 hover:underline"
+                                onClick={() => removeLessonFile(index)}
+                              >
+                                Убрать
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowAssignmentInput((prev) => !prev)}
+                    className="w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                  >
+                    + Добавить задание
+                  </button>
+                </div>
+              </article>
+            </div>
+
+            {showAssignmentInput ? (
+              <div className="rounded-lg border border-slate-200 bg-white p-3">
+                <textarea
+                  className="min-h-20 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                  placeholder="Поле задания"
+                  value={assignmentText}
+                  onChange={(event) => setAssignmentText(event.target.value)}
+                />
+                <div className="mt-2 space-y-1">
+                  <label className="text-sm font-medium text-slate-600">
+                    Дедлайн задания
+                  </label>
+                  <input
+                    type="datetime-local"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                    value={assignmentDueAt}
+                    onChange={(event) => setAssignmentDueAt(event.target.value)}
+                    required={
+                      showAssignmentInput && Boolean(assignmentText.trim())
+                    }
+                  />
+                </div>
+              </div>
+            ) : null}
+          </section>
+        </div>
+      </main>
+    </form>
   );
 }

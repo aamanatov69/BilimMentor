@@ -287,14 +287,14 @@ export default function TeacherGradesPage() {
     <main className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold sm:text-2xl">Оценки</h1>
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+        {/* <div className="flex w-full flex-wrap gap-2 sm:w-auto">
           <Link
             href="/dashboard/teacher/students"
             className="rounded bg-blue-700 px-3 py-2 text-sm text-white hover:bg-blue-800"
           >
             Заявки студентов
           </Link>
-        </div>
+        </div> */}
       </div>
 
       <section className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">

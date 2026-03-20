@@ -109,6 +109,27 @@ export const lmsController = {
     res.json(result);
   },
 
+  unreadNotificationCount: async (req: AuthenticatedRequest, res: Response) => {
+    const result = await lmsService.getUnreadNotificationCount(req.user?.sub);
+    res.json(result);
+  },
+
+  markNotificationAsRead: async (req: AuthenticatedRequest, res: Response) => {
+    const result = await lmsService.markNotificationAsRead(
+      req.user?.sub,
+      String(req.params.id),
+    );
+    res.json(result);
+  },
+
+  markAllNotificationsAsRead: async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ) => {
+    const result = await lmsService.markAllNotificationsAsRead(req.user?.sub);
+    res.json(result);
+  },
+
   listUsers: async (req: AuthenticatedRequest, res: Response) => {
     const result = await lmsService.listUsersForMessaging(
       req.user?.sub,
