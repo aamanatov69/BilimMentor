@@ -212,7 +212,7 @@ export default function IndexPage() {
                 </div>
                 <div className="col-span-3 p-5">
                   <p className="text-lg font-bold text-slate-800">
-                    Добро пожаловать, Алексей{" "}
+                    Добро пожаловать{" "}
                   </p>
                   <div className="mt-4 grid gap-3 sm:grid-cols-3">
                     <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
