@@ -69,7 +69,7 @@ export default function IndexPage() {
     <div className="min-h-screen bg-white text-slate-900 antialiased">
       {/*  Navbar  */}
       <header className="sticky top-0 z-50 border-b border-slate-100 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3 lg:px-8">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-5 lg:px-8">
           <Link href="/" className="flex items-center gap-2.5">
             <Image
               src="/brand/bm-icon.svg"
@@ -80,7 +80,7 @@ export default function IndexPage() {
               priority
               sizes="36px"
             />
-            <span className="text-xl font-bold text-slate-900">
+            <span className="text-lg font-bold text-slate-900 sm:text-xl">
               BilimMentor
             </span>
           </Link>
@@ -94,38 +94,54 @@ export default function IndexPage() {
             </a>
           </nav>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <Link
               href="/login"
-              className="text-sm font-medium text-slate-600 hover:text-slate-900"
+              className="rounded-md px-2 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 sm:px-3 sm:text-sm"
             >
               Войти
             </Link>
             <Link
               href="/register"
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+              className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 sm:px-4 sm:text-sm"
             >
               Регистрация
             </Link>
           </div>
         </div>
+        <div className="border-t border-slate-100 md:hidden">
+          <div className="mx-auto flex max-w-7xl gap-2 px-4 py-2 sm:px-5">
+            <a
+              href="#features"
+              className="flex-1 rounded-md bg-slate-50 px-3 py-2 text-center text-xs font-semibold text-slate-700"
+            >
+              Возможности
+            </a>
+            <a
+              href="#how"
+              className="flex-1 rounded-md bg-slate-50 px-3 py-2 text-center text-xs font-semibold text-slate-700"
+            >
+              Как это работает
+            </a>
+          </div>
+        </div>
       </header>
 
       {/*  Hero  */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-slate-50 to-white pb-20 pt-20 lg:pt-28">
+      <section className="relative overflow-hidden bg-gradient-to-b from-slate-50 to-white pb-14 pt-14 sm:pb-20 sm:pt-20 lg:pt-28">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(59,130,246,0.12),transparent)]" />
-        <div className="relative mx-auto max-w-4xl px-5 text-center lg:px-8">
-          <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3.5 py-1 text-sm font-medium text-blue-700">
+        <div className="relative mx-auto max-w-4xl px-4 text-center sm:px-5 lg:px-8">
+          <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 sm:px-3.5 sm:text-sm">
             <Zap className="h-3.5 w-3.5" />
             Платформа нового поколения
           </span>
-          <h1 className="text-4xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-5xl lg:text-6xl">
+          <h1 className="text-3xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-5xl lg:text-6xl">
             Обучение, которое{" "}
             <span className="bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
               приносит результат
             </span>
           </h1>
-          <p className="mx-auto mt-5 max-w-2xl text-lg text-slate-500 sm:text-xl">
+          <p className="mx-auto mt-5 max-w-2xl text-base text-slate-500 sm:text-xl">
             BilimMentor цифровая платформа наставничества и образования.
             Персональные курсы, живые менторы и прозрачный прогресс в одном
             месте.
@@ -145,7 +161,7 @@ export default function IndexPage() {
             </Link>
           </div> */}
 
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-slate-400">
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-slate-400 sm:gap-x-6 sm:text-sm">
             <span className="flex items-center gap-1.5">
               <CheckCircle className="h-4 w-4 text-emerald-500" />
               Без скрытых платежей
@@ -162,90 +178,92 @@ export default function IndexPage() {
         </div>
 
         {/* Dashboard mockup */}
-        <div className="relative mx-auto mt-14 max-w-5xl px-5 lg:px-8">
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-200/80">
-            <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-3">
-              <span className="h-3 w-3 rounded-full bg-red-400" />
-              <span className="h-3 w-3 rounded-full bg-amber-400" />
-              <span className="h-3 w-3 rounded-full bg-emerald-400" />
-              <div className="ml-3 flex-1 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs text-slate-400">
-                app.bilimmentor.kz/dashboard
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-0 lg:grid-cols-4">
-              <div className="hidden border-r border-slate-100 bg-slate-50 p-4 lg:block">
-                <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-slate-400">
-                  Меню
-                </p>
-                <div className="mb-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white">
-                  Курсы
-                </div>
-                <div className="mb-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600">
-                  Прогресс
-                </div>
-                <div className="mb-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600">
-                  Сообщения
-                </div>
-                <div className="mb-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600">
-                  Оценки
-                </div>
-                <div className="mb-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600">
-                  Настройки
+        <div className="relative mx-auto mt-10 max-w-5xl px-0 sm:mt-14 sm:px-5 lg:px-8">
+          <div className="mobile-scroll overflow-x-auto">
+            <div className="min-w-[760px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-200/80 sm:min-w-0">
+              <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-3">
+                <span className="h-3 w-3 rounded-full bg-red-400" />
+                <span className="h-3 w-3 rounded-full bg-amber-400" />
+                <span className="h-3 w-3 rounded-full bg-emerald-400" />
+                <div className="ml-3 flex-1 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs text-slate-400">
+                  app.bilimmentor.kz/dashboard
                 </div>
               </div>
-              <div className="col-span-3 p-5">
-                <p className="text-lg font-bold text-slate-800">
-                  Добро пожаловать, Алексей{" "}
-                </p>
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <p className="text-2xl font-bold text-blue-600">3</p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Курсов активно
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <p className="text-2xl font-bold text-blue-600">12</p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Заданий выполнено
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <p className="text-2xl font-bold text-blue-600">87</p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Средний балл
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-4 rounded-xl border border-slate-100 p-4">
-                  <p className="mb-3 text-sm font-semibold text-slate-700">
-                    Прогресс по курсам
+              <div className="grid grid-cols-3 gap-0 lg:grid-cols-4">
+                <div className="hidden border-r border-slate-100 bg-slate-50 p-4 lg:block">
+                  <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-slate-400">
+                    Меню
                   </p>
-                  <div className="mb-3">
-                    <div className="mb-1 flex justify-between text-xs text-slate-600">
-                      <span>Подготовка к IELTS</span>
-                      <span className="font-medium">72%</span>
+                  <div className="mb-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white">
+                    Курсы
+                  </div>
+                  <div className="mb-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600">
+                    Прогресс
+                  </div>
+                  <div className="mb-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600">
+                    Сообщения
+                  </div>
+                  <div className="mb-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600">
+                    Оценки
+                  </div>
+                  <div className="mb-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600">
+                    Настройки
+                  </div>
+                </div>
+                <div className="col-span-3 p-5">
+                  <p className="text-lg font-bold text-slate-800">
+                    Добро пожаловать, Алексей{" "}
+                  </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                      <p className="text-2xl font-bold text-blue-600">3</p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Курсов активно
+                      </p>
                     </div>
-                    <div className="h-2 rounded-full bg-slate-100">
-                      <div className="h-full w-[72%] rounded-full bg-blue-500" />
+                    <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                      <p className="text-2xl font-bold text-blue-600">12</p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Заданий выполнено
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                      <p className="text-2xl font-bold text-blue-600">87</p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Средний балл
+                      </p>
                     </div>
                   </div>
-                  <div className="mb-3">
-                    <div className="mb-1 flex justify-between text-xs text-slate-600">
-                      <span>Математика ЕГЭ</span>
-                      <span className="font-medium">45%</span>
+                  <div className="mt-4 rounded-xl border border-slate-100 p-4">
+                    <p className="mb-3 text-sm font-semibold text-slate-700">
+                      Прогресс по курсам
+                    </p>
+                    <div className="mb-3">
+                      <div className="mb-1 flex justify-between text-xs text-slate-600">
+                        <span>Подготовка к IELTS</span>
+                        <span className="font-medium">72%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-100">
+                        <div className="h-full w-[72%] rounded-full bg-blue-500" />
+                      </div>
                     </div>
-                    <div className="h-2 rounded-full bg-slate-100">
-                      <div className="h-full w-[45%] rounded-full bg-blue-500" />
+                    <div className="mb-3">
+                      <div className="mb-1 flex justify-between text-xs text-slate-600">
+                        <span>Математика ЕГЭ</span>
+                        <span className="font-medium">45%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-100">
+                        <div className="h-full w-[45%] rounded-full bg-blue-500" />
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <div className="mb-1 flex justify-between text-xs text-slate-600">
-                      <span>Study Abroad 101</span>
-                      <span className="font-medium">30%</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-slate-100">
-                      <div className="h-full w-[30%] rounded-full bg-blue-500" />
+                    <div>
+                      <div className="mb-1 flex justify-between text-xs text-slate-600">
+                        <span>Study Abroad 101</span>
+                        <span className="font-medium">30%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-100">
+                        <div className="h-full w-[30%] rounded-full bg-blue-500" />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -256,8 +274,8 @@ export default function IndexPage() {
       </section>
 
       {/*  Stats  */}
-      <section className="border-y border-slate-100 bg-white py-12">
-        <div className="mx-auto grid max-w-5xl grid-cols-2 gap-8 px-5 text-center md:grid-cols-4 lg:px-8">
+      <section className="border-y border-slate-100 bg-white py-10 sm:py-12">
+        <div className="mx-auto grid max-w-5xl grid-cols-2 gap-6 px-4 text-center sm:gap-8 sm:px-5 md:grid-cols-4 lg:px-8">
           {stats.map((item) => (
             <div key={item.label}>
               <p className="text-3xl font-extrabold text-blue-600">
@@ -270,13 +288,13 @@ export default function IndexPage() {
       </section>
 
       {/*  Features  */}
-      <section id="features" className="bg-slate-50 py-20">
-        <div className="mx-auto max-w-6xl px-5 lg:px-8">
-          <div className="mb-12 text-center">
-            <h2 className="text-3xl font-extrabold text-slate-900 sm:text-4xl">
+      <section id="features" className="bg-slate-50 py-14 sm:py-20">
+        <div className="mx-auto max-w-6xl px-4 sm:px-5 lg:px-8">
+          <div className="mb-10 text-center sm:mb-12">
+            <h2 className="text-2xl font-extrabold text-slate-900 sm:text-4xl">
               Всё что нужно для роста
             </h2>
-            <p className="mt-3 text-slate-500">
+            <p className="mt-3 text-sm text-slate-500 sm:text-base">
               Инструменты для студентов, преподавателей и администраторов в
               единой системе.
             </p>
@@ -307,10 +325,10 @@ export default function IndexPage() {
       </section>
 
       {/*  How it works  */}
-      <section id="how" className="bg-white py-20">
-        <div className="mx-auto max-w-5xl px-5 lg:px-8">
-          <div className="mb-12 text-center">
-            <h2 className="text-3xl font-extrabold text-slate-900 sm:text-4xl">
+      <section id="how" className="bg-white py-14 sm:py-20">
+        <div className="mx-auto max-w-5xl px-4 sm:px-5 lg:px-8">
+          <div className="mb-10 text-center sm:mb-12">
+            <h2 className="text-2xl font-extrabold text-slate-900 sm:text-4xl">
               Как это работает
             </h2>
           </div>
@@ -329,26 +347,26 @@ export default function IndexPage() {
       </section>
 
       {/*  CTA  */}
-      <section className="bg-blue-600 py-20">
-        <div className="mx-auto max-w-3xl px-5 text-center lg:px-8">
+      <section className="bg-blue-600 py-14 sm:py-20">
+        <div className="mx-auto max-w-3xl px-4 text-center sm:px-5 lg:px-8">
           <Users className="mx-auto mb-4 h-10 w-10 text-blue-200" />
-          <h2 className="text-3xl font-extrabold text-white sm:text-4xl">
+          <h2 className="text-2xl font-extrabold text-white sm:text-4xl">
             Присоединяйтесь уже сегодня
           </h2>
-          <p className="mt-3 text-blue-100">
+          <p className="mt-3 text-sm text-blue-100 sm:text-base">
             Более 500 студентов уже обучаются на BilimMentor. Начните свой путь
             прямо сейчас.
           </p>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
             <Link
               href="/register"
-              className="rounded-lg bg-white px-7 py-3 text-base font-semibold text-blue-700 shadow-lg transition hover:bg-blue-50"
+              className="w-full rounded-lg bg-white px-7 py-3 text-base font-semibold text-blue-700 shadow-lg transition hover:bg-blue-50 sm:w-auto"
             >
               Начать бесплатно
             </Link>
             <Link
               href="/login"
-              className="rounded-lg border border-blue-400 px-7 py-3 text-base font-semibold text-white transition hover:bg-blue-500"
+              className="w-full rounded-lg border border-blue-400 px-7 py-3 text-base font-semibold text-white transition hover:bg-blue-500 sm:w-auto"
             >
               Войти
             </Link>
