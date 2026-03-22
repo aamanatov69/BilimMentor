@@ -1,10 +1,14 @@
 ﻿"use client";
 
+import katex from "katex";
+import "katex/contrib/mhchem";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+type FormulaKind = "math" | "chemistry";
 
 type CourseModule = Record<string, unknown>;
 
@@ -92,6 +96,82 @@ function moduleKindLabel(type: string) {
     return "Урок";
   }
   return "Материал";
+}
+
+function normalizeFormulaForPreview(formula: string, kind: FormulaKind) {
+  const trimmed = formula.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (kind === "chemistry" && !trimmed.includes("\\ce{")) {
+    return `\\ce{${trimmed}}`;
+  }
+
+  return trimmed;
+}
+
+function renderFormulaHtml(
+  formula: string,
+  kind: FormulaKind,
+  displayMode = true,
+) {
+  const normalized = normalizeFormulaForPreview(formula, kind);
+  if (!normalized) {
+    return "";
+  }
+
+  return katex.renderToString(normalized, {
+    throwOnError: false,
+    displayMode,
+    strict: "ignore",
+  });
+}
+
+function looksLikeFormula(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  return /\\(frac|sqrt|sum|int|sin|cos|tan|log|pi|alpha|beta|gamma|omega|ce|mathrm|cdot|left|right|binom|Delta)|\^|_|->|<=>|>=|<=/.test(
+    trimmed,
+  );
+}
+
+function detectFormulaKindFromContent(
+  title: string,
+  kindLabel: string,
+  text: string,
+): FormulaKind {
+  const combined = `${title} ${kindLabel} ${text}`.toLowerCase();
+  if (
+    combined.includes("хими") ||
+    text.includes("\\ce{") ||
+    /\b(?:h|o|na|cl|ca|mg|fe|cu|zn|co|so|no)[0-9]/i.test(text)
+  ) {
+    return "chemistry";
+  }
+
+  return "math";
+}
+
+function renderFormulaBlock(text: string, kind: FormulaKind) {
+  const blocks = text
+    .split(/\r?\n+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  if (blocks.length === 0) {
+    return "";
+  }
+
+  return blocks
+    .map(
+      (block) =>
+        `<div class="overflow-x-auto py-1">${renderFormulaHtml(block, kind)}</div>`,
+    )
+    .join("");
 }
 
 function extractCourseContent(modules: CourseModule[] | undefined) {
@@ -457,9 +537,30 @@ export default function StudentCourseDetailsPage() {
                                     {material.kindLabel}
                                   </p>
                                   {material.text ? (
-                                    <p className="mt-1 break-words text-sm text-slate-700">
-                                      {material.text}
-                                    </p>
+                                    looksLikeFormula(material.text) ||
+                                    material.title
+                                      .toLowerCase()
+                                      .includes("формула") ? (
+                                      <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                        <div
+                                          className="text-slate-900"
+                                          dangerouslySetInnerHTML={{
+                                            __html: renderFormulaBlock(
+                                              material.text,
+                                              detectFormulaKindFromContent(
+                                                material.title,
+                                                material.kindLabel,
+                                                material.text,
+                                              ),
+                                            ),
+                                          }}
+                                        />
+                                      </div>
+                                    ) : (
+                                      <p className="mt-1 break-words text-sm text-slate-700">
+                                        {material.text}
+                                      </p>
+                                    )
                                   ) : null}
                                   {material.url ? (
                                     <div className="mt-2 grid gap-2 text-sm sm:flex sm:flex-wrap sm:items-center sm:gap-3">

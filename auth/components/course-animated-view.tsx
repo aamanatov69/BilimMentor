@@ -58,17 +58,19 @@ function Item({
   course,
   visual,
   setSelectedItem,
+  className,
 }: {
   course: PublicCourse;
   visual: string;
   setSelectedItem: (item: string) => void;
+  className?: string;
 }) {
   const animationName = `course-${course.id}`;
 
   return (
     <AnimateView
       name={animationName}
-      className="overflow-hidden rounded-3xl border border-white/50 bg-white/65 shadow-[0_10px_28px_rgba(15,23,42,0.12)] backdrop-blur md:w-72 md:flex-none xl:w-80"
+      className={`w-full overflow-hidden rounded-3xl border border-white/50 bg-white/65 shadow-[0_10px_28px_rgba(15,23,42,0.12)] backdrop-blur md:w-72 md:flex-none xl:w-80 ${className ?? ""}`}
     >
       <button
         type="button"
@@ -212,17 +214,19 @@ export function AnimatedCourseGrid({ courses }: { courses: PublicCourse[] }) {
 
   return (
     <>
-      <div className="max-h-[41rem] overflow-y-auto overscroll-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden sm:max-h-[41rem] md:max-h-none md:overflow-x-auto md:overflow-y-hidden md:pb-2">
+      <div className="max-h-[40rem] touch-pan-y overflow-y-auto overscroll-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden md:max-h-none md:touch-pan-x md:overflow-x-auto md:overflow-y-hidden md:pb-2">
         <div className="grid gap-4 md:flex md:w-max md:flex-nowrap">
           {courses.length > 0 ? (
             courses.map((course, index) => {
               const visual = courseVisuals[index % courseVisuals.length];
+              const hiddenOnMobile = index >= 10;
               return (
                 <Item
                   key={course.id}
                   course={course}
                   visual={visual}
                   setSelectedItem={setSelectedItem}
+                  className={hiddenOnMobile ? "hidden md:block" : undefined}
                 />
               );
             })

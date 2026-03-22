@@ -145,7 +145,7 @@ export default function StudentAssignmentsPage() {
       const mapped = await Promise.all(
         Array.from(files).map(async (file) => ({
           name: file.name,
-          type: file.type,
+          type: file.type || "application/octet-stream",
           size: file.size,
           dataBase64: await fileToBase64(file),
         })),
@@ -557,33 +557,11 @@ export default function StudentAssignmentsPage() {
 
                   <div className="mt-3">
                     <label className="block text-sm font-medium text-slate-700">
-                      Файлы (Word, Excel, PowerPoint, PDF)
+                      Файлы любого типа
                     </label>
-                    <div className="mt-2">
-                      <input
-                        id={`camera-${selectedAssignment.id}`}
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        className="sr-only"
-                        onChange={(event) =>
-                          void handleFilesSelected(
-                            selectedAssignment.id,
-                            event.target.files,
-                          )
-                        }
-                      />
-                      <label
-                        htmlFor={`camera-${selectedAssignment.id}`}
-                        className="inline-flex cursor-pointer rounded border border-sky-300 px-3 py-1.5 text-sm text-sky-700 hover:bg-sky-50"
-                      >
-                        Сфотографировать и прикрепить
-                      </label>
-                    </div>
                     <input
                       type="file"
                       multiple
-                      accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.rtf,.txt,.csv,.zip,.rar,.7z,image/*,video/*,audio/*,.json,.xml,.html,.md,.js,.ts,.py,.java,.c,.cpp,.cs"
                       onChange={(event) =>
                         void handleFilesSelected(
                           selectedAssignment.id,

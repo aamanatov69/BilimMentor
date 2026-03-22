@@ -2288,94 +2288,6 @@ type SubmissionContentPayload = {
   attachments: SubmissionAttachmentPayload[];
 };
 
-const ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
-  "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.ms-powerpoint",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "application/vnd.oasis.opendocument.text",
-  "application/vnd.oasis.opendocument.spreadsheet",
-  "application/vnd.oasis.opendocument.presentation",
-  "application/rtf",
-  "text/csv",
-  "text/plain",
-  "application/zip",
-  "application/x-rar-compressed",
-  "application/x-7z-compressed",
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-  "image/bmp",
-  "image/tiff",
-  "image/svg+xml",
-  "video/mp4",
-  "video/webm",
-  "video/quicktime",
-  "video/x-msvideo",
-  "video/x-matroska",
-  "audio/mpeg",
-  "audio/wav",
-  "audio/ogg",
-  "audio/mp4",
-  "application/json",
-  "application/xml",
-  "text/xml",
-  "text/html",
-  "text/markdown",
-]);
-
-const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
-  "pdf",
-  "doc",
-  "docx",
-  "xls",
-  "xlsx",
-  "ppt",
-  "pptx",
-  "odt",
-  "ods",
-  "odp",
-  "rtf",
-  "txt",
-  "csv",
-  "zip",
-  "rar",
-  "7z",
-  "jpg",
-  "jpeg",
-  "png",
-  "gif",
-  "webp",
-  "bmp",
-  "tif",
-  "tiff",
-  "svg",
-  "mp4",
-  "webm",
-  "mov",
-  "avi",
-  "mkv",
-  "mp3",
-  "wav",
-  "ogg",
-  "m4a",
-  "json",
-  "xml",
-  "html",
-  "md",
-  "js",
-  "ts",
-  "py",
-  "java",
-  "c",
-  "cpp",
-  "cs",
-]);
-
 const MAX_ATTACHMENT_SIZE_BYTES = 8 * 1024 * 1024;
 const MAX_TOTAL_ATTACHMENTS_SIZE_BYTES = 20 * 1024 * 1024;
 const MAX_LESSON_MATERIAL_FILE_SIZE_BYTES = 20 * 1024 * 1024;
@@ -2398,28 +2310,6 @@ function estimateBase64DecodedBytes(value: string) {
       ? 1
       : 0;
   return Math.floor((normalized.length * 3) / 4) - padding;
-}
-
-function getFileExtension(fileName: string) {
-  const trimmed = fileName.trim().toLowerCase();
-  const dotIndex = trimmed.lastIndexOf(".");
-  if (dotIndex < 0 || dotIndex === trimmed.length - 1) {
-    return "";
-  }
-  return trimmed.slice(dotIndex + 1);
-}
-
-function isSupportedSubmissionAttachmentType(attachment: {
-  name: string;
-  type: string;
-}) {
-  const normalizedType = attachment.type.trim().toLowerCase();
-  if (normalizedType && ALLOWED_ATTACHMENT_MIME_TYPES.has(normalizedType)) {
-    return true;
-  }
-
-  const extension = getFileExtension(attachment.name);
-  return extension ? ALLOWED_ATTACHMENT_EXTENSIONS.has(extension) : false;
 }
 
 function normalizeLessonMaterialFile(
@@ -2475,11 +2365,11 @@ function parseStoredSubmissionContent(
         .filter(isRecord)
         .map((item) => ({
           name: asString(item.name).trim(),
-          type: asString(item.type).trim(),
+          type: asString(item.type).trim() || "application/octet-stream",
           size: Number(item.size) || 0,
           dataBase64: asString(item.dataBase64).trim(),
         }))
-        .filter((item) => item.name && item.type && item.dataBase64),
+        .filter((item) => item.name && item.dataBase64),
     };
   } catch {
     return {
@@ -2521,11 +2411,11 @@ function normalizeSubmissionInput(
           .filter(isRecord)
           .map((item) => ({
             name: asString(item.name).trim(),
-            type: asString(item.type).trim(),
+            type: asString(item.type).trim() || "application/octet-stream",
             size: Number(item.size) || 0,
             dataBase64: asString(item.dataBase64).trim(),
           }))
-          .filter((item) => item.name && item.type && item.dataBase64)
+          .filter((item) => item.name && item.dataBase64)
       : fallback.attachments,
   };
 }
@@ -3613,11 +3503,6 @@ export async function studentSubmitAssignment(
 
   let totalAttachmentsSize = 0;
   for (const attachment of submissionPayload.attachments) {
-    ensure(
-      isSupportedSubmissionAttachmentType(attachment),
-      400,
-      `Действие выполнено`,
-    );
     ensure(
       attachment.size > 0 && attachment.size <= MAX_ATTACHMENT_SIZE_BYTES,
       400,
