@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import { renderFormulaAsMathTypeHtml } from "@/lib/math-render";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 type AttachmentItem = {
@@ -135,7 +137,6 @@ export default function TeacherAssignmentsPage() {
 
   useEffect(() => {
     const loadRows = async () => {
-
       try {
         const response = await fetch(`${API_URL}/api/teacher/grades`, {
           credentials: "include",
@@ -206,8 +207,47 @@ export default function TeacherAssignmentsPage() {
 
   const filteredRows = activeTab === "viewed" ? viewedRows : unviewedRows;
 
+  const firstUnviewed = unviewedRows[0] ?? null;
+
   return (
     <main className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      <section className="dashboard-rise relative mb-4 overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-amber-50 via-white to-cyan-50 p-4 sm:p-5">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-amber-300/25 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-cyan-300/25 blur-3xl" />
+        <div className="relative">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Что делать сейчас
+          </p>
+          <h2 className="mt-2 text-xl font-bold text-slate-900 sm:text-2xl">
+            Проверьте новые ответы студентов в первую очередь
+          </h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Сначала откройте не просмотренные, затем выставьте оценку и
+            комментарий.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("unviewed");
+                if (firstUnviewed) {
+                  setPreviewRow(firstUnviewed);
+                }
+              }}
+              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            >
+              Открыть новый ответ ({unviewedRows.length})
+            </button>
+            <Link
+              href="/dashboard/teacher/grades"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Перейти к оцениванию
+            </Link>
+          </div>
+        </div>
+      </section>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold sm:text-2xl">Задания</h1>
         <Link
@@ -250,11 +290,16 @@ export default function TeacherAssignmentsPage() {
       </div>
 
       {filteredRows.length === 0 ? (
-        <p className="mt-4 text-sm text-slate-600">
-          {activeTab === "viewed"
-            ? "Пока нет просмотренных ответов студентов."
-            : "Пока нет не просмотренных ответов студентов."}
-        </p>
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+          <p>
+            {activeTab === "viewed"
+              ? "Пока нет просмотренных ответов студентов."
+              : "Пока нет не просмотренных ответов студентов."}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Новые ответы появятся после сдачи заданий студентами.
+          </p>
+        </div>
       ) : (
         <div
           ref={listRef}
@@ -355,9 +400,14 @@ export default function TeacherAssignmentsPage() {
             {previewRow.answerFormula ? (
               <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs font-semibold text-slate-500">Формулы</p>
-                <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">
-                  {previewRow.answerFormula}
-                </p>
+                <div
+                  className="mt-2 overflow-x-auto break-words text-slate-900"
+                  dangerouslySetInnerHTML={{
+                    __html: renderFormulaAsMathTypeHtml(
+                      previewRow.answerFormula,
+                    ),
+                  }}
+                />
               </div>
             ) : null}
 

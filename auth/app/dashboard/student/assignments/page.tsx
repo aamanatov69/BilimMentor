@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { createElement, useEffect, useMemo, useRef, useState } from "react";
+
+import { renderFormulaAsMathTypeHtml } from "@/lib/math-render";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -39,107 +42,146 @@ type AttachmentDraft = SubmissionAttachment & {
   dataBase64: string;
 };
 
+function isOverdue(dueAt: string | null) {
+  if (!dueAt) return false;
+  const ts = new Date(dueAt).getTime();
+  if (Number.isNaN(ts)) return false;
+  return Date.now() > ts;
+}
+
 function fileToBase64(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result;
       if (typeof result !== "string") {
-        reject(new Error("Не удалось прочитать файл"));
+        reject(new Error("bad_file"));
         return;
       }
       const [, base64 = ""] = result.split(",");
       resolve(base64);
     };
-    reader.onerror = () => reject(new Error("Ошибка чтения файла"));
+    reader.onerror = () => reject(new Error("read_error"));
     reader.readAsDataURL(file);
   });
 }
 
-function isOverdueByDueAt(dueAt: string | null) {
-  if (!dueAt) {
-    return false;
-  }
-
-  const timestamp = new Date(dueAt).getTime();
-  if (Number.isNaN(timestamp)) {
-    return false;
-  }
-
-  return Date.now() > timestamp;
-}
-
 export default function StudentAssignmentsPage() {
-  const [activeFilter, setActiveFilter] = useState<
-    "pending" | "completed" | "missed"
-  >("pending");
-  const [assignments, setAssignments] = useState<StudentAssignment[]>([]);
+  const [rows, setRows] = useState<StudentAssignment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+
+  const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [textDrafts, setTextDrafts] = useState<Record<string, string>>({});
   const [formulaDrafts, setFormulaDrafts] = useState<Record<string, string>>(
     {},
   );
   const [codeDrafts, setCodeDrafts] = useState<Record<string, string>>({});
-  const [newAttachments, setNewAttachments] = useState<
+  const [attachmentDrafts, setAttachmentDrafts] = useState<
     Record<string, AttachmentDraft[]>
   >({});
-  const [busy, setBusy] = useState<Record<string, boolean>>({});
-  const [success, setSuccess] = useState<Record<string, string>>({});
-  const [error, setError] = useState("");
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState<
-    string | null
-  >(null);
+  const mathFieldRefs = useRef<
+    Record<
+      string,
+      | (HTMLElement & {
+          value?: string;
+          getValue?: (format?: string) => string;
+        })
+      | null
+    >
+  >({});
 
   useEffect(() => {
-    const loadAssignments = async () => {
-      try {
-        const response = await fetch(`${API_URL}/api/student/assignments`, {
-          credentials: "include",
-        });
-
-        const data = (await response.json()) as {
-          assignments?: StudentAssignment[];
-          message?: string;
-        };
-
-        if (!response.ok) {
-          setError(data.message ?? "Не удалось загрузить задания");
-          return;
-        }
-
-        const rows = data.assignments ?? [];
-        setAssignments(rows);
-        setTextDrafts(
-          Object.fromEntries(
-            rows.map((item) => [item.id, item.submission?.text ?? ""]),
-          ),
-        );
-        setFormulaDrafts(
-          Object.fromEntries(
-            rows.map((item) => [item.id, item.submission?.formula ?? ""]),
-          ),
-        );
-        setCodeDrafts(
-          Object.fromEntries(
-            rows.map((item) => [item.id, item.submission?.code ?? ""]),
-          ),
-        );
-      } catch {
-        setError("Ошибка сети");
-      }
-    };
-
-    void loadAssignments();
+    void import("mathlive");
   }, []);
 
-  const handleFilesSelected = async (
+  const getMathFieldFormula = (assignmentId: string) => {
+    const node = mathFieldRefs.current[assignmentId];
+    if (!node) {
+      return "";
+    }
+
+    const unstyled =
+      typeof node.getValue === "function"
+        ? node.getValue("latex-unstyled")
+        : "";
+    if (unstyled) {
+      return unstyled;
+    }
+
+    return node.value ?? "";
+  };
+
+  const loadRows = async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch(`${API_URL}/api/student/assignments`, {
+        credentials: "include",
+      });
+
+      const data = (await response.json()) as {
+        assignments?: StudentAssignment[];
+        message?: string;
+      };
+
+      if (!response.ok) {
+        setError(data.message ?? "Не удалось загрузить задания");
+        return;
+      }
+
+      const assignments = data.assignments ?? [];
+      setRows(assignments);
+      setTextDrafts(
+        Object.fromEntries(
+          assignments.map((item) => [item.id, item.submission?.text ?? ""]),
+        ),
+      );
+      setFormulaDrafts(
+        Object.fromEntries(
+          assignments.map((item) => [item.id, item.submission?.formula ?? ""]),
+        ),
+      );
+      setCodeDrafts(
+        Object.fromEntries(
+          assignments.map((item) => [item.id, item.submission?.code ?? ""]),
+        ),
+      );
+    } catch {
+      setError("Ошибка сети");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadRows();
+  }, []);
+
+  const pendingRows = useMemo(
+    () => rows.filter((item) => !item.submission && !isOverdue(item.dueAt)),
+    [rows],
+  );
+
+  const completedRows = useMemo(
+    () => rows.filter((item) => Boolean(item.submission)),
+    [rows],
+  );
+
+  const missedRows = useMemo(
+    () => rows.filter((item) => !item.submission && isOverdue(item.dueAt)),
+    [rows],
+  );
+
+  const nextPending = pendingRows[0] ?? null;
+
+  const handleSelectFiles = async (
     assignmentId: string,
     files: FileList | null,
   ) => {
-    if (!files || files.length === 0) {
-      return;
-    }
-
-    setError("");
+    if (!files || files.length === 0) return;
 
     try {
       const mapped = await Promise.all(
@@ -151,462 +193,384 @@ export default function StudentAssignmentsPage() {
         })),
       );
 
-      setNewAttachments((prev) => ({
-        ...prev,
-        [assignmentId]: [...(prev[assignmentId] ?? []), ...mapped],
+      setAttachmentDrafts((previous) => ({
+        ...previous,
+        [assignmentId]: [...(previous[assignmentId] ?? []), ...mapped],
       }));
     } catch {
-      setError("Не удалось прочитать выбранные файлы");
+      setError("Не удалось прочитать вложения");
     }
   };
 
   const submitAssignment = async (assignment: StudentAssignment) => {
     const text = (textDrafts[assignment.id] ?? "").trim();
-    const formula = (formulaDrafts[assignment.id] ?? "").trim();
+    const formulaRaw = formulaDrafts[assignment.id] ?? "";
+    const formula = formulaRaw.trim();
     const code = (codeDrafts[assignment.id] ?? "").trim();
-    const attachments = newAttachments[assignment.id] ?? [];
+    const attachments = attachmentDrafts[assignment.id] ?? [];
 
-    if (isOverdueByDueAt(assignment.dueAt)) {
-      setError("Срок сдачи задания истек");
+    if (isOverdue(assignment.dueAt)) {
+      setError("Срок сдачи прошел");
       return;
     }
 
     if (!text && !formula && !code && attachments.length === 0) {
-      setError("Добавьте текст, формулу, код или хотя бы один файл");
+      setError("Добавьте текст, формулу, код или вложение");
       return;
     }
 
+    setBusy((previous) => ({ ...previous, [assignment.id]: true }));
     setError("");
-    setSuccess((prev) => ({ ...prev, [assignment.id]: "" }));
-    setBusy((prev) => ({ ...prev, [assignment.id]: true }));
 
     try {
-      const body: {
-        content: string;
-        formula: string;
-        code: string;
-        attachments?: AttachmentDraft[];
-      } = {
-        content: text,
-        formula,
-        code,
-      };
-
-      if (attachments.length > 0) {
-        body.attachments = attachments;
-      }
-
       const response = await fetch(
         `${API_URL}/api/student/assignments/${assignment.id}/submit`,
         {
-          credentials: "include",
           method: "POST",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(body),
+          body: JSON.stringify({
+            content: text,
+            formula: formulaRaw,
+            code,
+            attachments,
+          }),
         },
       );
 
-      const data = (await response.json()) as {
-        message?: string;
-        submission?: {
-          id: string;
-          text: string;
-          formula: string;
-          code: string;
-          attachments: SubmissionAttachment[];
-          submittedAt: string;
-        };
-      };
-
+      const data = (await response.json()) as { message?: string };
       if (!response.ok) {
-        setError(data.message ?? "Не удалось отправить задание");
+        setError(data.message ?? "Не удалось отправить работу");
         return;
       }
 
-      setAssignments((prev) =>
-        prev.map((item) =>
-          item.id === assignment.id
-            ? {
-                ...item,
-                submission: {
-                  id: data.submission?.id ?? item.submission?.id ?? "",
-                  text,
-                  formula,
-                  code,
-                  attachments:
-                    data.submission?.attachments ??
-                    item.submission?.attachments ??
-                    [],
-                  submittedAt:
-                    data.submission?.submittedAt ?? new Date().toISOString(),
-                  grade: item.submission?.grade ?? null,
-                  feedback: item.submission?.feedback ?? null,
-                },
-              }
-            : item,
-        ),
-      );
-      setSelectedAssignmentId(null);
-
-      setNewAttachments((prev) => ({ ...prev, [assignment.id]: [] }));
-      setSuccess((prev) => ({
-        ...prev,
-        [assignment.id]: data.message ?? "Задание отправлено преподавателю",
-      }));
+      await loadRows();
+      setActiveCardId(null);
+      setAttachmentDrafts((previous) => ({ ...previous, [assignment.id]: [] }));
     } catch {
-      setError("Ошибка сети");
+      setError("Ошибка сети при отправке");
     } finally {
-      setBusy((prev) => ({ ...prev, [assignment.id]: false }));
+      setBusy((previous) => ({ ...previous, [assignment.id]: false }));
     }
   };
 
-  const pendingAssignments = useMemo(
-    () =>
-      assignments.filter(
-        (item) => !item.submission && !isOverdueByDueAt(item.dueAt),
-      ),
-    [assignments],
-  );
+  const renderCard = (assignment: StudentAssignment) => {
+    const expanded = activeCardId === assignment.id;
+    const attachments = attachmentDrafts[assignment.id] ?? [];
 
-  const completedAssignments = useMemo(
-    () => assignments.filter((item) => !!item.submission),
-    [assignments],
-  );
+    return (
+      <article
+        key={assignment.id}
+        className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"
+      >
+        <p className="text-sm font-semibold text-slate-900">
+          {assignment.title}
+        </p>
+        <p className="mt-1 text-xs text-slate-600">{assignment.course.title}</p>
+        <p className="mt-1 text-xs text-slate-500">
+          {assignment.lessonTitle || "Без урока"}
+        </p>
 
-  const missedAssignments = useMemo(
-    () =>
-      assignments.filter(
-        (item) => !item.submission && isOverdueByDueAt(item.dueAt),
-      ),
-    [assignments],
-  );
+        <p className="mt-2 text-xs text-slate-600">
+          {assignment.dueAt
+            ? `Срок: ${new Date(assignment.dueAt).toLocaleString("ru-RU")}`
+            : "Срок не указан"}
+        </p>
 
-  const filteredAssignments =
-    activeFilter === "pending"
-      ? pendingAssignments
-      : activeFilter === "completed"
-        ? completedAssignments
-        : missedAssignments;
+        <button
+          type="button"
+          onClick={() =>
+            setActiveCardId((current) =>
+              current === assignment.id ? null : assignment.id,
+            )
+          }
+          className="mt-3 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          {expanded
+            ? "Скрыть форму"
+            : assignment.submission
+              ? "Пересдать"
+              : "Сдать"}
+        </button>
 
-  const activeTitle =
-    activeFilter === "pending"
-      ? "Невыполненные задания"
-      : activeFilter === "completed"
-        ? "Выполненные задания"
-        : "Пропущенные задания";
+        {expanded ? (
+          <div className="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <textarea
+              value={textDrafts[assignment.id] ?? ""}
+              onChange={(event) =>
+                setTextDrafts((previous) => ({
+                  ...previous,
+                  [assignment.id]: event.target.value,
+                }))
+              }
+              placeholder="Текст ответа"
+              className="min-h-20 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
+            />
 
-  const emptyStateText =
-    activeFilter === "pending"
-      ? "Нет невыполненных заданий."
-      : activeFilter === "completed"
-        ? "Пока нет выполненных заданий."
-        : "Нет пропущенных заданий.";
+            <textarea
+              value={formulaDrafts[assignment.id] ?? ""}
+              onChange={(event) =>
+                setFormulaDrafts((previous) => ({
+                  ...previous,
+                  [assignment.id]: event.target.value,
+                }))
+              }
+              placeholder="Формула (опционально)"
+              className="min-h-16 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
+            />
 
-  const selectedAssignment = useMemo(
-    () =>
-      assignments.find(
-        (assignment) => assignment.id === selectedAssignmentId,
-      ) ?? null,
-    [assignments, selectedAssignmentId],
-  );
-
-  const renderAssignmentCard = (item: StudentAssignment) => (
-    <article
-      key={item.id}
-      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-    >
-      {/** Form is intentionally hidden until user opens it for this assignment. */}
-      {(() => {
-        const isOverdue = isOverdueByDueAt(item.dueAt);
-        const isBlockedByDeadline = !item.submission && isOverdue;
-
-        return (
-          <>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="break-words text-lg font-semibold">
-                  {item.title}
-                </h2>
-                <p className="break-words text-sm text-slate-600">
-                  Курс: {item.course.title}
-                </p>
-                <p className="break-words text-sm text-slate-600">
-                  Урок: {item.lessonTitle?.trim() || "Не указан"}
-                </p>
-              </div>
-              <div className="w-full text-xs text-slate-600 sm:w-auto sm:text-sm">
-                Дедлайн:{" "}
-                {item.dueAt
-                  ? new Date(item.dueAt).toLocaleString()
-                  : "Не указан"}
-              </div>
-            </div>
-
-            {isBlockedByDeadline ? (
-              <p className="mt-2 text-xs font-medium text-rose-700">
-                Срок сдачи истек. Отправка недоступна.
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+                MathType поле для формулы
               </p>
-            ) : null}
+              <div className="mt-2 rounded-md border border-indigo-300 bg-white p-2">
+                {createElement("math-field", {
+                  className:
+                    "block min-h-12 w-full rounded-md border border-indigo-200 px-3 py-2 text-indigo-900",
+                  value: formulaDrafts[assignment.id] ?? "",
+                  ref: (node: unknown) => {
+                    mathFieldRefs.current[assignment.id] =
+                      (node as
+                        | (HTMLElement & {
+                            value?: string;
+                            getValue?: (format?: string) => string;
+                          })
+                        | null) ?? null;
+                  },
+                  onInput: (event: Event) => {
+                    const target = event.target as EventTarget & {
+                      value?: string;
+                      getValue?: (format?: string) => string;
+                    };
+                    const unstyled =
+                      typeof target.getValue === "function"
+                        ? target.getValue("latex-unstyled")
+                        : "";
+                    setFormulaDrafts((previous) => ({
+                      ...previous,
+                      [assignment.id]: unstyled || target.value || "",
+                    }));
+                  },
+                })}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const formulaValue = getMathFieldFormula(assignment.id);
+                    if (!formulaValue) {
+                      return;
+                    }
 
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setSelectedAssignmentId(item.id)}
-                className="w-full rounded border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 sm:w-auto"
-              >
-                Открыть задание
-              </button>
-
-              {item.submission ? (
-                <span className="text-xs text-emerald-700">
-                  Выполнено:{" "}
-                  {new Date(item.submission.submittedAt).toLocaleString()}
-                </span>
-              ) : (
-                <span
-                  className={
-                    isOverdueByDueAt(item.dueAt)
-                      ? "text-xs text-rose-700"
-                      : "text-xs text-amber-700"
-                  }
+                    setFormulaDrafts((previous) => ({
+                      ...previous,
+                      [assignment.id]: formulaValue,
+                    }));
+                  }}
+                  className="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
                 >
-                  {isOverdueByDueAt(item.dueAt) ? "Пропущено" : "Не выполнено"}
-                </span>
-              )}
+                  Вставить в поле формулы
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const formulaValue = getMathFieldFormula(assignment.id);
+                    if (!formulaValue) {
+                      return;
+                    }
 
-              {success[item.id] ? (
-                <span className="text-xs text-emerald-700">
-                  {success[item.id]}
-                </span>
+                    setTextDrafts((previous) => ({
+                      ...previous,
+                      [assignment.id]: `${previous[assignment.id] ?? ""}[[MATH:${formulaValue}]]`,
+                    }));
+                  }}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  Вставить в текст ответа
+                </button>
+              </div>
+              {formulaDrafts[assignment.id]?.trim() ? (
+                <div className="mt-2 rounded-md border border-indigo-200 bg-white p-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-700">
+                    Предпросмотр формулы
+                  </p>
+                  <div
+                    className="mt-2 overflow-x-auto text-slate-900"
+                    dangerouslySetInnerHTML={{
+                      __html: renderFormulaAsMathTypeHtml(
+                        formulaDrafts[assignment.id],
+                      ),
+                    }}
+                  />
+                </div>
               ) : null}
             </div>
 
-            {item.submission && item.submission.grade !== null ? (
-              <div className="mt-3 rounded border border-emerald-200 bg-emerald-50 p-3 text-sm">
-                <p className="font-medium text-emerald-800">
-                  Оценка: {item.submission.grade}
-                </p>
-                <p className="text-emerald-900">
-                  Комментарий: {item.submission.feedback ?? "-"}
-                </p>
-              </div>
+            <textarea
+              value={codeDrafts[assignment.id] ?? ""}
+              onChange={(event) =>
+                setCodeDrafts((previous) => ({
+                  ...previous,
+                  [assignment.id]: event.target.value,
+                }))
+              }
+              placeholder="Код (опционально)"
+              className="min-h-16 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
+            />
+
+            <label className="inline-flex cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+              Добавить файлы
+              <input
+                type="file"
+                className="hidden"
+                multiple
+                onChange={(event) =>
+                  void handleSelectFiles(assignment.id, event.target.files)
+                }
+              />
+            </label>
+
+            {attachments.length ? (
+              <ul className="space-y-1 text-xs text-slate-600">
+                {attachments.map((file, index) => (
+                  <li key={`${assignment.id}-file-${index}`}>• {file.name}</li>
+                ))}
+              </ul>
             ) : null}
-          </>
-        );
-      })()}
-    </article>
-  );
+
+            <button
+              type="button"
+              disabled={busy[assignment.id]}
+              onClick={() => void submitAssignment(assignment)}
+              className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+            >
+              {busy[assignment.id] ? "Отправка..." : "Отправить"}
+            </button>
+          </div>
+        ) : null}
+      </article>
+    );
+  };
 
   return (
     <main className="space-y-4">
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-        <h1 className="text-2xl font-semibold">Задания студента</h1>
-
-        {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveFilter("pending")}
-            className={
-              activeFilter === "pending"
-                ? "rounded-full border border-blue-700 bg-blue-700 px-3 py-1.5 text-xs font-medium text-white"
-                : "rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-            }
-          >
-            Невыполненные задания ({pendingAssignments.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveFilter("completed")}
-            className={
-              activeFilter === "completed"
-                ? "rounded-full border border-emerald-700 bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white"
-                : "rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-            }
-          >
-            Выполненные задания ({completedAssignments.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveFilter("missed")}
-            className={
-              activeFilter === "missed"
-                ? "rounded-full border border-rose-700 bg-rose-700 px-3 py-1.5 text-xs font-medium text-white"
-                : "rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-            }
-          >
-            Пропущенные ({missedAssignments.length})
-          </button>
-        </div>
-
-        <h2 className="text-lg font-semibold">{activeTitle}</h2>
-        {filteredAssignments.length ? (
-          <div
-            className={
-              filteredAssignments.length > 4
-                ? "max-h-[42rem] space-y-3 overflow-y-auto pr-1"
-                : "space-y-3"
-            }
-          >
-            {filteredAssignments.map((item) => renderAssignmentCard(item))}
+      <section className="dashboard-rise relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-cyan-50 via-white to-emerald-50 p-5 shadow-sm">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-cyan-300/25 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-emerald-300/25 blur-3xl" />
+        <div className="relative">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Что делать сейчас
+          </p>
+          <h1 className="mt-2 text-2xl font-bold text-slate-900">
+            Сдайте ближайшее доступное задание
+          </h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Сначала отправьте новое задание, потом проверьте уже сданные и
+            комментарии преподавателя.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {nextPending ? (
+              <button
+                type="button"
+                onClick={() => setActiveCardId(nextPending.id)}
+                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+              >
+                Открыть ближайшее задание
+              </button>
+            ) : null}
+            <Link
+              href="/dashboard/student/grades"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Смотреть оценки
+            </Link>
           </div>
-        ) : (
-          <article className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm">
-            {emptyStateText}
-          </article>
-        )}
+        </div>
       </section>
 
-      {selectedAssignment ? (
-        <div className="fixed inset-0 z-40 bg-slate-950/70 p-2 sm:p-4">
-          <div className="flex min-h-full items-center justify-center">
-            <div className="max-h-[92svh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl sm:p-6">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-semibold">
-                    {selectedAssignment.title}
-                  </h2>
-                  <p className="text-sm text-slate-600">
-                    Курс: {selectedAssignment.course.title}
-                  </p>
-                  <p className="text-sm text-slate-600">
-                    Урок:{" "}
-                    {selectedAssignment.lessonTitle?.trim() || "Не указан"}
-                  </p>
-                  <p className="text-sm text-slate-600">
-                    Дедлайн:{" "}
-                    {selectedAssignment.dueAt
-                      ? new Date(selectedAssignment.dueAt).toLocaleString()
-                      : "Не указан"}
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h1 className="text-2xl font-semibold text-slate-900">
+          Задания (Kanban)
+        </h1>
+        <p className="mt-1 text-sm text-slate-600">
+          Статусы: доступные, сданы, просроченные.
+        </p>
+        {error ? (
+          <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {error}
+          </p>
+        ) : null}
+      </section>
+
+      {loading ? (
+        <section className="grid gap-4 xl:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={`kanban-skeleton-${index}`}
+              className="h-[420px] animate-pulse rounded-3xl border border-slate-200 bg-white"
+            />
+          ))}
+        </section>
+      ) : (
+        <section className="grid gap-4 xl:grid-cols-3">
+          <article className="rounded-3xl border border-amber-200 bg-amber-50/40 p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-700">
+              Доступные ({pendingRows.length})
+            </h2>
+            <div className="mt-3 space-y-2">
+              {pendingRows.length ? (
+                pendingRows.map(renderCard)
+              ) : (
+                <div className="rounded-2xl border border-amber-200 bg-white px-3 py-2 text-sm text-amber-700">
+                  <p>Нет доступных заданий.</p>
+                  <p className="mt-1 text-xs text-amber-700/90">
+                    Проверьте раздел курсов: возможно, доступ к новому курсу еще
+                    не подтвержден.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
-                  onClick={() => setSelectedAssignmentId(null)}
-                >
-                  Закрыть
-                </button>
-              </div>
-
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p className="whitespace-pre-wrap break-words text-sm text-slate-700">
-                  {selectedAssignment.description?.trim() ||
-                    "Описание задания отсутствует."}
-                </p>
-              </div>
-
-              {!selectedAssignment.submission &&
-              !isOverdueByDueAt(selectedAssignment.dueAt) ? (
-                <>
-                  <label className="mt-4 block text-sm font-medium text-slate-700">
-                    Текст решения
-                  </label>
-                  <textarea
-                    value={textDrafts[selectedAssignment.id] ?? ""}
-                    onChange={(event) =>
-                      setTextDrafts((prev) => ({
-                        ...prev,
-                        [selectedAssignment.id]: event.target.value,
-                      }))
-                    }
-                    className="mt-2 min-h-24 w-full rounded border border-slate-300 px-3 py-2"
-                    placeholder="Опишите решение задания"
-                  />
-
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700">
-                        Формулы (LaTeX/Math)
-                      </label>
-                      <textarea
-                        value={formulaDrafts[selectedAssignment.id] ?? ""}
-                        onChange={(event) =>
-                          setFormulaDrafts((prev) => ({
-                            ...prev,
-                            [selectedAssignment.id]: event.target.value,
-                          }))
-                        }
-                        className="mt-2 min-h-20 w-full rounded border border-slate-300 px-3 py-2"
-                        placeholder="Например: \int_0^1 x^2 dx = 1/3"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700">
-                        Код (programming)
-                      </label>
-                      <textarea
-                        value={codeDrafts[selectedAssignment.id] ?? ""}
-                        onChange={(event) =>
-                          setCodeDrafts((prev) => ({
-                            ...prev,
-                            [selectedAssignment.id]: event.target.value,
-                          }))
-                        }
-                        className="mt-2 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-mono text-sm"
-                        placeholder="Введите код решения"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="mt-3">
-                    <label className="block text-sm font-medium text-slate-700">
-                      Файлы любого типа
-                    </label>
-                    <input
-                      type="file"
-                      multiple
-                      onChange={(event) =>
-                        void handleFilesSelected(
-                          selectedAssignment.id,
-                          event.target.files,
-                        )
-                      }
-                      className="mt-2 block w-full text-sm"
-                    />
-
-                    {(newAttachments[selectedAssignment.id] ?? []).length >
-                    0 ? (
-                      <ul className="mt-2 list-disc pl-5 text-xs text-slate-600">
-                        {(newAttachments[selectedAssignment.id] ?? []).map(
-                          (attachment) => (
-                            <li
-                              key={`${selectedAssignment.id}-${attachment.name}-${attachment.size}`}
-                              className="break-all"
-                            >
-                              {attachment.name} (
-                              {Math.ceil(attachment.size / 1024)} KB)
-                            </li>
-                          ),
-                        )}
-                      </ul>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => void submitAssignment(selectedAssignment)}
-                      disabled={!!busy[selectedAssignment.id]}
-                      className="w-full rounded bg-blue-700 px-4 py-2 text-sm text-white hover:bg-blue-800 disabled:opacity-60 sm:w-auto"
-                    >
-                      {busy[selectedAssignment.id]
-                        ? "Отправка..."
-                        : "Отправить ответ"}
-                    </button>
-                  </div>
-                </>
-              ) : null}
+              )}
             </div>
-          </div>
-        </div>
-      ) : null}
+          </article>
+
+          <article className="rounded-3xl border border-emerald-200 bg-emerald-50/40 p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-700">
+              Сданы ({completedRows.length})
+            </h2>
+            <div className="mt-3 space-y-2">
+              {completedRows.length ? (
+                completedRows.map(renderCard)
+              ) : (
+                <div className="rounded-2xl border border-emerald-200 bg-white px-3 py-2 text-sm text-emerald-700">
+                  <p>Пока ничего не сдано.</p>
+                  <p className="mt-1 text-xs text-emerald-700/90">
+                    После первой отправки здесь появится история ваших работ.
+                  </p>
+                </div>
+              )}
+            </div>
+          </article>
+
+          <article className="rounded-3xl border border-rose-200 bg-rose-50/40 p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-rose-700">
+              Просроченные ({missedRows.length})
+            </h2>
+            <div className="mt-3 space-y-2">
+              {missedRows.length ? (
+                missedRows.map(renderCard)
+              ) : (
+                <div className="rounded-2xl border border-rose-200 bg-white px-3 py-2 text-sm text-rose-700">
+                  <p>Просроченных нет.</p>
+                  <p className="mt-1 text-xs text-rose-700/90">
+                    Отличный темп. Старайтесь отправлять задания до дедлайна.
+                  </p>
+                </div>
+              )}
+            </div>
+          </article>
+        </section>
+      )}
     </main>
   );
 }

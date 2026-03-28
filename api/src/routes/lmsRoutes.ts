@@ -37,6 +37,7 @@ lmsRoutes.get(
 );
 lmsRoutes.get("/api/me", verifyToken, asyncHandler(lmsController.me));
 lmsRoutes.get("/api/public/courses", asyncHandler(lmsController.publicCourses));
+lmsRoutes.get("/api/public/stats", asyncHandler(lmsController.publicStats));
 
 lmsRoutes.get(
   "/api/courses",
@@ -141,6 +142,12 @@ lmsRoutes.get(
   verifyToken,
   requireRole([UserRole.teacher]),
   asyncHandler(lmsController.teacherCourseDetails),
+);
+lmsRoutes.get(
+  "/api/teacher/courses/:id/share-invite",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherCreateCourseShareInvite),
 );
 lmsRoutes.post(
   "/api/teacher/courses",
@@ -267,6 +274,12 @@ lmsRoutes.delete(
   requireRole([UserRole.admin]),
   asyncHandler(lmsController.adminDeleteCourse),
 );
+lmsRoutes.post(
+  "/api/admin/courses/bulk",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminBulkCourses),
+);
 lmsRoutes.get(
   "/api/admin/courses/:id/students",
   verifyToken,
@@ -351,6 +364,12 @@ lmsRoutes.delete(
   verifyToken,
   requireRole([UserRole.teacher]),
   asyncHandler(lmsController.teacherDeleteLesson),
+);
+lmsRoutes.patch(
+  "/api/teacher/courses/:id/lessons/reorder",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherReorderLessons),
 );
 lmsRoutes.post(
   "/api/teacher/courses/:id/lessons/:lessonId/materials",

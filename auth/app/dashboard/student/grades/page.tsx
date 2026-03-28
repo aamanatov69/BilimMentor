@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -42,7 +43,6 @@ export default function StudentGradesPage() {
 
   useEffect(() => {
     const loadData = async () => {
-
       try {
         const response = await fetch(`${API_URL}/api/student/grades`, {
           credentials: "include",
@@ -107,7 +107,18 @@ export default function StudentGradesPage() {
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="text-lg font-semibold">Статистика по курсам</h2>
         {(overview?.courseStats ?? []).length === 0 ? (
-          <p className="mt-3 text-sm text-slate-600">Нет данных по курсам.</p>
+          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-sm text-slate-600">
+              Пока нет данных по курсам. Сдайте первую работу, чтобы статистика
+              начала заполняться.
+            </p>
+            <Link
+              href="/dashboard/student/assignments"
+              className="mt-3 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+            >
+              Перейти к заданиям
+            </Link>
+          </div>
         ) : (
           <>
             <div className="mt-4 max-h-[28rem] space-y-3 overflow-y-auto pr-1 md:hidden">
@@ -170,7 +181,18 @@ export default function StudentGradesPage() {
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="text-lg font-semibold">Оценки по заданиям</h2>
         {(overview?.assignmentGrades ?? []).length === 0 ? (
-          <p className="mt-3 text-sm text-slate-600">Оценок пока нет.</p>
+          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-sm text-slate-600">
+              Оценок пока нет. Откройте задания и отправьте первую работу на
+              проверку.
+            </p>
+            <Link
+              href="/dashboard/student/assignments"
+              className="mt-3 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+            >
+              Открыть задания
+            </Link>
+          </div>
         ) : (
           <div className="mt-4 max-h-[28rem] space-y-3 overflow-y-auto pr-1 text-sm">
             {(overview?.assignmentGrades ?? []).map((item) => (

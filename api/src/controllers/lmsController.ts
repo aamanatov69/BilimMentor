@@ -104,6 +104,11 @@ export const lmsController = {
     res.json(result);
   },
 
+  publicStats: async (_req: AuthenticatedRequest, res: Response) => {
+    const result = await lmsService.getPublicStats();
+    res.json(result);
+  },
+
   notifications: async (req: AuthenticatedRequest, res: Response) => {
     const result = await lmsService.listNotifications(req.user?.sub);
     res.json(result);
@@ -231,6 +236,11 @@ export const lmsController = {
     res.json(result);
   },
 
+  adminBulkCourses: async (req: AuthenticatedRequest, res: Response) => {
+    const result = await lmsService.adminBulkCourses(req.body);
+    res.json(result);
+  },
+
   adminCourseStudents: async (req: AuthenticatedRequest, res: Response) => {
     const result = await lmsService.adminCourseStudents(String(req.params.id));
     res.json(result);
@@ -335,6 +345,17 @@ export const lmsController = {
     res.json(result);
   },
 
+  teacherCreateCourseShareInvite: async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ) => {
+    const result = await lmsService.teacherCreateCourseShareInvite(
+      req.user?.sub,
+      String(req.params.id),
+    );
+    res.json(result);
+  },
+
   teacherCreateCourse: async (req: AuthenticatedRequest, res: Response) => {
     const result = await lmsService.teacherCreateCourse(
       req.user?.sub,
@@ -426,6 +447,15 @@ export const lmsController = {
       req.user?.sub,
       String(req.params.id),
       String(req.params.lessonId),
+    );
+    res.json(result);
+  },
+
+  teacherReorderLessons: async (req: AuthenticatedRequest, res: Response) => {
+    const result = await lmsService.teacherReorderLessons(
+      req.user?.sub,
+      String(req.params.id),
+      req.body?.lessonIds,
     );
     res.json(result);
   },

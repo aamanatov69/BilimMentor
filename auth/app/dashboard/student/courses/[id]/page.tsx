@@ -1,14 +1,12 @@
-﻿"use client";
+"use client";
 
-import katex from "katex";
-import "katex/contrib/mhchem";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+import { renderTextWithMathTypeTokensHtml } from "@/lib/math-render";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
-
-type FormulaKind = "math" | "chemistry";
 
 type CourseModule = Record<string, unknown>;
 
@@ -19,32 +17,38 @@ type StudentProgress = {
   completedLessonIds: string[];
 };
 
-type CourseItem = {
+type CourseData = {
   id: string;
   title: string;
-  category: string;
   description: string;
-  level: "beginner" | "intermediate" | "advanced";
-  progress?: number;
-  studentProgress?: StudentProgress;
   modules?: CourseModule[];
+  studentProgress?: StudentProgress;
 };
 
-type CourseMaterialItem = {
+type LessonMaterial = {
   id: string;
-  type: string;
-  kindLabel: string;
   title: string;
+  type: string;
   text: string;
   url: string;
   fileName: string;
 };
 
-type CourseLessonItem = {
+type LessonItem = {
   id: string;
   title: string;
-  text: string;
-  materials: CourseMaterialItem[];
+  description: string;
+  materials: LessonMaterial[];
+};
+
+type AssignmentItem = {
+  id: string;
+  title: string;
+  dueAt: string | null;
+  lessonId?: string | null;
+  lessonTitle?: string | null;
+  course?: { id?: string; title?: string };
+  submission: unknown;
 };
 
 function asString(value: unknown) {
@@ -57,230 +61,96 @@ function toRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function resolveMaterialUrl(material: Record<string, unknown>) {
-  const directUrl = asString(material.url);
-  if (directUrl) return directUrl;
+function extractLessons(modules?: CourseModule[]) {
+  const list = Array.isArray(modules) ? modules : [];
 
-  const file = toRecord(material.file);
-  if (!file) return "";
-
-  const mimeType = asString(file.type);
-  const dataBase64 = asString(file.dataBase64);
-  if (!mimeType || !dataBase64) return "";
-
-  return `data:${mimeType};base64,${dataBase64}`;
-}
-
-function resolveMaterialFileName(material: Record<string, unknown>) {
-  const file = toRecord(material.file);
-  if (!file) return "";
-  return asString(file.name);
-}
-
-function moduleKindLabel(type: string) {
-  const normalized = type.toLowerCase();
-  if (normalized.includes("video")) return "Видео";
-  if (normalized.includes("book")) return "Книга";
-  if (normalized.includes("lecture") || normalized.includes("text")) {
-    return "Текст лекции";
-  }
-  if (normalized.includes("presentation") || normalized.includes("slide")) {
-    return "Презентация";
-  }
-  if (normalized.includes("formula") || normalized.includes("math")) {
-    return "Формула";
-  }
-  if (normalized.includes("code")) return "Код";
-  if (normalized.includes("material")) return "Материал";
-  if (normalized.includes("lesson") || normalized.includes("module")) {
-    return "Урок";
-  }
-  return "Материал";
-}
-
-function normalizeFormulaForPreview(formula: string, kind: FormulaKind) {
-  const trimmed = formula.trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  if (kind === "chemistry" && !trimmed.includes("\\ce{")) {
-    return `\\ce{${trimmed}}`;
-  }
-
-  return trimmed;
-}
-
-function renderFormulaHtml(
-  formula: string,
-  kind: FormulaKind,
-  displayMode = true,
-) {
-  const normalized = normalizeFormulaForPreview(formula, kind);
-  if (!normalized) {
-    return "";
-  }
-
-  return katex.renderToString(normalized, {
-    throwOnError: false,
-    displayMode,
-    strict: "ignore",
-  });
-}
-
-function looksLikeFormula(text: string) {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return false;
-  }
-
-  return /\\(frac|sqrt|sum|int|sin|cos|tan|log|pi|alpha|beta|gamma|omega|ce|mathrm|cdot|left|right|binom|Delta)|\^|_|->|<=>|>=|<=/.test(
-    trimmed,
-  );
-}
-
-function detectFormulaKindFromContent(
-  title: string,
-  kindLabel: string,
-  text: string,
-): FormulaKind {
-  const combined = `${title} ${kindLabel} ${text}`.toLowerCase();
-  if (
-    combined.includes("хими") ||
-    text.includes("\\ce{") ||
-    /\b(?:h|o|na|cl|ca|mg|fe|cu|zn|co|so|no)[0-9]/i.test(text)
-  ) {
-    return "chemistry";
-  }
-
-  return "math";
-}
-
-function renderFormulaBlock(text: string, kind: FormulaKind) {
-  const blocks = text
-    .split(/\r?\n+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  if (blocks.length === 0) {
-    return "";
-  }
-
-  return blocks
-    .map(
-      (block) =>
-        `<div class="overflow-x-auto py-1">${renderFormulaHtml(block, kind)}</div>`,
+  return list
+    .filter(
+      (module) =>
+        asString(module.type).toLowerCase() === "lesson" &&
+        module.isVisibleToStudents !== false,
     )
-    .join("");
-}
-
-function extractCourseContent(modules: CourseModule[] | undefined) {
-  const source = Array.isArray(modules) ? modules : [];
-
-  const lessonModules: CourseLessonItem[] = source
     .map((module, index) => {
-      const record = toRecord(module);
-      if (!record) return null;
-
-      const type = asString(record.type).toLowerCase();
-      if (type !== "lesson") return null;
-
-      const isVisibleToStudents =
-        typeof record.isVisibleToStudents === "boolean"
-          ? record.isVisibleToStudents
-          : true;
-      if (!isVisibleToStudents) return null;
-
-      const lessonTitle =
-        asString(record.title) || asString(record.name) || `Урок ${index + 1}`;
-      const lessonId = asString(record.id).trim() || `lesson-${index + 1}`;
-      const lessonText = asString(record.description);
-
-      const materials: CourseMaterialItem[] = Array.isArray(record.materials)
-        ? record.materials
-            .map((mat, matIndex) => {
-              const material = toRecord(mat);
-              if (!material) return null;
-              const matType = asString(material.type) || "material";
-              const matTitle =
-                asString(material.title) || `Материал ${matIndex + 1}`;
-              const matText =
-                asString(material.text) ||
-                asString(material.table) ||
-                asString(material.formula) ||
-                asString(material.code);
-              const matUrl = resolveMaterialUrl(material);
-              const matFileName = resolveMaterialFileName(material);
-
-              return {
-                id: `${lessonTitle}-material-${matIndex + 1}`,
-                type: matType,
-                kindLabel: moduleKindLabel(matType),
-                title: matTitle,
-                text: matText,
-                url: matUrl,
-                fileName: matFileName,
-              };
-            })
-            .filter((item): item is NonNullable<typeof item> => item !== null)
+      const lesson = toRecord(module) ?? {};
+      const materialsRaw = Array.isArray(lesson.materials)
+        ? lesson.materials
         : [];
+      const materials = materialsRaw
+        .map((item, materialIndex) => {
+          const material = toRecord(item);
+          if (!material) return null;
+          return {
+            id: asString(material.id) || `material-${index}-${materialIndex}`,
+            title: asString(material.title) || `Материал ${materialIndex + 1}`,
+            type: asString(material.type) || "material",
+            text:
+              asString(material.text) ||
+              asString(material.formula) ||
+              asString(material.code) ||
+              asString(material.table) ||
+              "",
+            url: asString(material.url) || "",
+            fileName: asString(toRecord(material.file)?.name),
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null);
 
       return {
-        id: lessonId,
-        title: lessonTitle,
-        text: lessonText,
+        id: asString(lesson.id) || `lesson-${index + 1}`,
+        title: asString(lesson.title) || `Урок ${index + 1}`,
+        description: asString(lesson.description),
         materials,
       };
-    })
-    .filter((item): item is NonNullable<typeof item> => item !== null);
-
-  return {
-    lessons: lessonModules,
-  };
+    });
 }
 
 export default function StudentCourseDetailsPage() {
   const params = useParams();
   const courseId = String(params.id ?? "");
 
-  const [course, setCourse] = useState<CourseItem | null>(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [course, setCourse] = useState<CourseData | null>(null);
+  const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
   const [selectedLessonId, setSelectedLessonId] = useState("");
-  const [busyMaterialId, setBusyMaterialId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [busyLessonId, setBusyLessonId] = useState("");
 
-  const loadCourse = async () => {
-    setError("");
+  const loadData = async () => {
     setLoading(true);
-    try {
-      const response = await fetch(
-        `${API_URL}/api/courses/${courseId}?_ts=${Date.now()}`,
-        {
-          credentials: "include",
-          headers: {
-            "Cache-Control": "no-cache",
-            Pragma: "no-cache",
-          },
-          cache: "no-store",
-        },
-      );
+    setError("");
 
-      const data = (await response.json()) as {
-        course?: CourseItem;
+    try {
+      const [courseResponse, assignmentsResponse] = await Promise.all([
+        fetch(`${API_URL}/api/courses/${courseId}`, {
+          credentials: "include",
+          cache: "no-store",
+        }),
+        fetch(`${API_URL}/api/student/assignments`, {
+          credentials: "include",
+        }),
+      ]);
+
+      const courseData = (await courseResponse.json()) as {
+        course?: CourseData;
         message?: string;
       };
+      const assignmentsData = (await assignmentsResponse.json()) as {
+        assignments?: AssignmentItem[];
+      };
 
-      if (!response.ok || !data.course) {
-        setError(data.message ?? "Не удалось загрузить курс");
+      if (!courseResponse.ok || !courseData.course) {
+        setError(courseData.message ?? "Не удалось загрузить курс");
         setCourse(null);
         return;
       }
 
-      setCourse(data.course);
-      setSelectedLessonId("");
+      setCourse(courseData.course);
+      const relatedAssignments = (assignmentsData.assignments ?? []).filter(
+        (assignment) => assignment && assignment.lessonId !== undefined,
+      );
+      setAssignments(relatedAssignments);
     } catch {
-      setError("Ошибка сети при загрузке курса");
+      setError("Ошибка сети");
       setCourse(null);
     } finally {
       setLoading(false);
@@ -288,73 +158,49 @@ export default function StudentCourseDetailsPage() {
   };
 
   useEffect(() => {
-    if (courseId) {
-      void loadCourse();
-    }
+    if (!courseId) return;
+    void loadData();
   }, [courseId]);
 
-  const openMaterial = async (item: CourseMaterialItem) => {
-    if (!item.url) {
-      return;
-    }
+  const lessons = useMemo(
+    () => extractLessons(course?.modules),
+    [course?.modules],
+  );
 
-    setBusyMaterialId(item.id);
-    try {
-      window.open(item.url, "_blank", "noopener,noreferrer");
-    } catch {
-      setError("Не удалось открыть материал");
-    } finally {
-      setBusyMaterialId("");
+  useEffect(() => {
+    if (!selectedLessonId && lessons.length > 0) {
+      setSelectedLessonId(lessons[0].id);
     }
-  };
+  }, [lessons, selectedLessonId]);
 
-  const downloadMaterial = async (item: CourseMaterialItem) => {
-    if (!item.url) {
-      return;
-    }
+  const selectedLesson =
+    lessons.find((lesson) => lesson.id === selectedLessonId) ?? null;
 
-    setBusyMaterialId(item.id);
-    try {
-      if (item.url.startsWith("data:")) {
-        const response = await fetch(item.url);
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = blobUrl;
-        anchor.download = item.fileName || item.title || "material";
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-      } else {
-        const anchor = document.createElement("a");
-        anchor.href = item.url;
-        anchor.download = item.fileName || "";
-        anchor.target = "_blank";
-        anchor.rel = "noreferrer";
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-      }
-    } catch {
-      setError("Не удалось скачать материал");
-    } finally {
-      setBusyMaterialId("");
-    }
-  };
+  const completedLessonIds = new Set(
+    course?.studentProgress?.completedLessonIds ?? [],
+  );
 
-  const setLessonCompletion = async (lessonId: string, completed: boolean) => {
+  const filteredAssignments = useMemo(() => {
+    if (!courseId) return [];
+    return assignments.filter(
+      (item) =>
+        asString(item.id) &&
+        asString(item.course?.id) === courseId &&
+        (!item.lessonId ||
+          lessons.some((lesson) => lesson.id === item.lessonId)),
+    );
+  }, [assignments, courseId, lessons]);
+
+  const setCompletion = async (lessonId: string, completed: boolean) => {
     setBusyLessonId(lessonId);
     setError("");
     try {
       const response = await fetch(
         `${API_URL}/api/student/courses/${courseId}/lessons/${lessonId}/completion`,
         {
-          credentials: "include",
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ completed }),
         },
       );
@@ -365,18 +211,15 @@ export default function StudentCourseDetailsPage() {
       };
 
       if (!response.ok || !data.studentProgress) {
-        setError(data.message ?? "Не удалось обновить прогресс урока");
+        setError(data.message ?? "Не удалось обновить прогресс");
         return;
       }
-
-      const studentProgress = data.studentProgress;
 
       setCourse((previous) =>
         previous
           ? {
               ...previous,
-              progress: studentProgress.progressPercent,
-              studentProgress,
+              studentProgress: data.studentProgress,
             }
           : previous,
       );
@@ -387,225 +230,265 @@ export default function StudentCourseDetailsPage() {
     }
   };
 
-  const content = extractCourseContent(course?.modules);
-  const completedLessonIds = new Set(
-    course?.studentProgress?.completedLessonIds ?? [],
-  );
-  const totalLessons =
-    course?.studentProgress?.totalLessons ?? content.lessons.length;
-  const completedLessons =
-    course?.studentProgress?.completedLessons ??
-    [...completedLessonIds].filter((lessonId) =>
-      content.lessons.some((lesson) => lesson.id === lessonId),
-    ).length;
-  const progressPercent =
-    course?.studentProgress?.progressPercent ??
-    (totalLessons > 0
-      ? Math.round((completedLessons / totalLessons) * 100)
-      : 0);
   return (
-    <>
-      <main className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+    <main className="space-y-4">
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="break-words text-xl font-semibold sm:text-2xl">
-              {course?.title ?? "Просмотр курса"}
+            <h1 className="text-2xl font-semibold text-slate-900">
+              {course?.title ?? "Курс"}
             </h1>
             <p className="mt-1 text-sm text-slate-600">
-              {course?.description ?? "Материалы и уроки курса"}
+              {course?.description ?? "Материалы курса"}
             </p>
           </div>
-          <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <div className="flex items-center gap-2">
+            <Link
+              href="/dashboard/student/courses"
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Назад
+            </Link>
             <button
               type="button"
-              onClick={() => void loadCourse()}
-              className="w-full rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 sm:w-auto"
+              onClick={() => void loadData()}
+              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
             >
               Обновить
             </button>
-            <Link
-              href="/dashboard/student/courses"
-              className="w-full rounded border border-slate-300 px-3 py-2 text-center text-sm hover:bg-slate-50 sm:w-auto"
-            >
-              Назад к курсам
-            </Link>
           </div>
         </div>
 
-        {loading ? <p className="text-sm text-slate-600">Загрузка...</p> : null}
-        {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+        <div className="mt-4">
+          <div className="mb-1 flex items-center justify-between text-sm">
+            <span className="font-medium text-slate-700">Общий прогресс</span>
+            <span className="font-semibold text-slate-900">
+              {course?.studentProgress?.progressPercent ?? 0}%
+            </span>
+          </div>
+          <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-sky-500 to-emerald-500"
+              style={{
+                width: `${Math.max(0, Math.min(100, course?.studentProgress?.progressPercent ?? 0))}%`,
+              }}
+            />
+          </div>
+        </div>
+      </section>
 
-        {!loading && !error ? (
-          <div className="space-y-5">
-            <section className="rounded border border-slate-200 bg-slate-50 p-3">
-              <h2 className="text-lg font-semibold">Прогресс по курсу</h2>
-              <p className="mt-1 text-sm text-slate-700">
-                Завершено уроков: {completedLessons} из {totalLessons}
-              </p>
-              <p className="mt-1 text-sm font-medium text-emerald-700">
-                Текущий прогресс: {progressPercent}%
-              </p>
-              <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-200">
-                <div
-                  className="h-full rounded-full bg-emerald-500 transition-all"
-                  style={{
-                    width: `${Math.max(0, Math.min(100, progressPercent))}%`,
-                  }}
-                />
-              </div>
-            </section>
+      {error ? (
+        <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </p>
+      ) : null}
 
-            <section>
-              <h2 className="text-lg font-semibold">Уроки курса</h2>
-              {content.lessons.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-600">
-                  Уроки пока не добавлены.
-                </p>
-              ) : (
-                <div className="mt-3 space-y-3">
-                  {content.lessons.map((item, lessonIndex) => (
-                    <article
-                      key={item.id}
+      {loading ? (
+        <section className="grid gap-4 xl:grid-cols-[280px_1fr_320px]">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={`skeleton-${index}`}
+              className="h-[460px] animate-pulse rounded-3xl border border-slate-200 bg-white"
+            />
+          ))}
+        </section>
+      ) : (
+        <section className="grid gap-4 xl:grid-cols-[280px_1fr_320px]">
+          <aside className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Уроки
+            </h2>
+            <div className="mt-3 space-y-2">
+              {lessons.length ? (
+                lessons.map((lesson, index) => {
+                  const selected = lesson.id === selectedLessonId;
+                  const done = completedLessonIds.has(lesson.id);
+                  return (
+                    <button
+                      key={lesson.id}
+                      type="button"
+                      onClick={() => setSelectedLessonId(lesson.id)}
                       className={
-                        selectedLessonId === item.id
-                          ? "rounded border border-blue-300 bg-blue-50 p-3"
-                          : "rounded border border-slate-200 p-3"
+                        selected
+                          ? "w-full rounded-2xl border border-sky-300 bg-sky-50 px-3 py-2 text-left"
+                          : "w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left hover:bg-slate-50"
                       }
                     >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSelectedLessonId((previous) =>
-                            previous === item.id ? "" : item.id,
-                          )
-                        }
-                        className="w-full text-left"
-                      >
-                        <p className="text-xs font-semibold text-slate-500">
-                          Урок {lessonIndex + 1}
-                        </p>
-                        <p className="break-words font-medium">{item.title}</p>
-                      </button>
-
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        {completedLessonIds.has(item.id) ? (
-                          <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                            Урок пройден
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                            Урок не завершен
-                          </span>
-                        )}
-
-                        <button
-                          type="button"
-                          disabled={busyLessonId === item.id}
-                          onClick={() =>
-                            void setLessonCompletion(
-                              item.id,
-                              !completedLessonIds.has(item.id),
-                            )
-                          }
-                          className="rounded border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
-                        >
-                          {busyLessonId === item.id
-                            ? "Сохранение..."
-                            : completedLessonIds.has(item.id)
-                              ? "Снять отметку"
-                              : "Урок пройден"}
-                        </button>
-                      </div>
-
-                      {selectedLessonId === item.id ? (
-                        <div className="mt-4 border-t border-blue-200 pt-4">
-                          {item.materials.length === 0 ? (
-                            <p className="mt-2 text-sm text-slate-600">
-                              Для этого урока пока нет материалов.
-                            </p>
-                          ) : (
-                            <div className="mt-3 space-y-3">
-                              {item.materials.map((material) => (
-                                <article
-                                  key={material.id}
-                                  className="rounded border border-slate-200 bg-white p-3"
-                                >
-                                  <p className="break-words font-medium">
-                                    {material.title}
-                                  </p>
-                                  <p className="mt-1 text-xs text-slate-500">
-                                    {material.kindLabel}
-                                  </p>
-                                  {material.text ? (
-                                    looksLikeFormula(material.text) ||
-                                    material.title
-                                      .toLowerCase()
-                                      .includes("формула") ? (
-                                      <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                                        <div
-                                          className="text-slate-900"
-                                          dangerouslySetInnerHTML={{
-                                            __html: renderFormulaBlock(
-                                              material.text,
-                                              detectFormulaKindFromContent(
-                                                material.title,
-                                                material.kindLabel,
-                                                material.text,
-                                              ),
-                                            ),
-                                          }}
-                                        />
-                                      </div>
-                                    ) : (
-                                      <p className="mt-1 break-words text-sm text-slate-700">
-                                        {material.text}
-                                      </p>
-                                    )
-                                  ) : null}
-                                  {material.url ? (
-                                    <div className="mt-2 grid gap-2 text-sm sm:flex sm:flex-wrap sm:items-center sm:gap-3">
-                                      <button
-                                        type="button"
-                                        disabled={
-                                          busyMaterialId === material.id
-                                        }
-                                        onClick={() =>
-                                          void openMaterial(material)
-                                        }
-                                        className="rounded border border-blue-200 px-3 py-1.5 text-left text-blue-700 hover:bg-blue-50"
-                                      >
-                                        {busyMaterialId === material.id
-                                          ? "Загрузка..."
-                                          : "Открыть материал"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        disabled={
-                                          busyMaterialId === material.id
-                                        }
-                                        onClick={() =>
-                                          void downloadMaterial(material)
-                                        }
-                                        className="rounded border border-blue-200 px-3 py-1.5 text-left text-blue-700 hover:bg-blue-50"
-                                      >
-                                        Скачать
-                                      </button>
-                                    </div>
-                                  ) : null}
-                                </article>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ) : null}
-                    </article>
-                  ))}
-                </div>
+                      <p className="text-xs text-slate-500">Урок {index + 1}</p>
+                      <p className="mt-0.5 text-sm font-semibold text-slate-900">
+                        {lesson.title}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {done ? "✔ завершен" : "в процессе"}
+                      </p>
+                    </button>
+                  );
+                })
+              ) : (
+                <p className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                  Уроки пока не опубликованы.
+                </p>
               )}
-            </section>
-          </div>
-        ) : null}
-      </main>
-    </>
+            </div>
+          </aside>
+
+          <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            {selectedLesson ? (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-xl font-semibold text-slate-900">
+                    {selectedLesson.title}
+                  </h2>
+                  <button
+                    type="button"
+                    disabled={busyLessonId === selectedLesson.id}
+                    onClick={() =>
+                      void setCompletion(
+                        selectedLesson.id,
+                        !completedLessonIds.has(selectedLesson.id),
+                      )
+                    }
+                    className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                  >
+                    {busyLessonId === selectedLesson.id
+                      ? "Сохранение..."
+                      : completedLessonIds.has(selectedLesson.id)
+                        ? "Снять отметку"
+                        : "Отметить завершенным"}
+                  </button>
+                </div>
+
+                {selectedLesson.description ? (
+                  <div
+                    className="mt-2 overflow-x-auto break-words text-sm text-slate-700"
+                    dangerouslySetInnerHTML={{
+                      __html: renderTextWithMathTypeTokensHtml(
+                        selectedLesson.description,
+                      ),
+                    }}
+                  />
+                ) : null}
+
+                <div className="mt-5 space-y-3">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                    Контент урока
+                  </h3>
+                  {selectedLesson.materials.length ? (
+                    selectedLesson.materials.map((material) => (
+                      <div
+                        key={material.id}
+                        className="rounded-2xl border border-slate-200 p-3"
+                      >
+                        <p className="text-sm font-semibold text-slate-900">
+                          {material.title}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Тип: {material.type}
+                        </p>
+                        {material.text ? (
+                          material.type.toLowerCase() === "lecture" ? (
+                            <div
+                              className="mt-2 overflow-x-auto break-words rounded-xl bg-slate-50 p-3 text-xs text-slate-700"
+                              dangerouslySetInnerHTML={{
+                                __html: renderTextWithMathTypeTokensHtml(
+                                  material.text,
+                                ),
+                              }}
+                            />
+                          ) : (
+                            <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs text-slate-700">
+                              {material.text}
+                            </pre>
+                          )
+                        ) : null}
+                        {material.url ? (
+                          <a
+                            href={material.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-3 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            Открыть материал
+                          </a>
+                        ) : null}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                      Материалы для этого урока пока не добавлены.
+                    </p>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                Выберите урок слева.
+              </p>
+            )}
+          </article>
+
+          <aside className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Задания и дедлайны
+            </h2>
+            <div className="mt-3 space-y-2">
+              {filteredAssignments.length ? (
+                filteredAssignments.map((assignment) => {
+                  const dueAt = assignment.dueAt
+                    ? new Date(assignment.dueAt)
+                    : null;
+                  const overdue = dueAt
+                    ? dueAt.getTime() < Date.now() && !assignment.submission
+                    : false;
+                  return (
+                    <article
+                      key={assignment.id}
+                      className="rounded-2xl border border-slate-200 p-3"
+                    >
+                      <p className="text-sm font-semibold text-slate-900">
+                        {assignment.title}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {assignment.lessonTitle || "Без привязки к уроку"}
+                      </p>
+                      <p
+                        className={
+                          overdue
+                            ? "mt-2 text-xs font-semibold text-rose-700"
+                            : "mt-2 text-xs text-slate-600"
+                        }
+                      >
+                        {dueAt
+                          ? `Срок: ${dueAt.toLocaleString("ru-RU")}`
+                          : "Срок: не указан"}
+                      </p>
+                      <span
+                        className={
+                          assignment.submission
+                            ? "mt-2 inline-flex rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-semibold text-emerald-700"
+                            : overdue
+                              ? "mt-2 inline-flex rounded-full bg-rose-100 px-2 py-1 text-[11px] font-semibold text-rose-700"
+                              : "mt-2 inline-flex rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700"
+                        }
+                      >
+                        {assignment.submission
+                          ? "Сдано"
+                          : overdue
+                            ? "Просрочено"
+                            : "Ожидает сдачи"}
+                      </span>
+                    </article>
+                  );
+                })
+              ) : (
+                <p className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                  Для курса пока нет заданий.
+                </p>
+              )}
+            </div>
+          </aside>
+        </section>
+      )}
+    </main>
   );
 }

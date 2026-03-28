@@ -22,6 +22,13 @@ type PublicCourse = {
   isPublished?: boolean;
 };
 
+type PublicStats = {
+  students: number;
+  courses: number;
+  teachers: number;
+  satisfiedStudentsPercent: number | null;
+};
+
 async function getPublicCourses(): Promise<PublicCourse[]> {
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? process.env.API_URL;
   if (!apiBase) {
@@ -52,11 +59,35 @@ async function getPublicCourses(): Promise<PublicCourse[]> {
 }
 
 const stats = [
-  { value: "500+", label: "Студентов" },
-  { value: "50+", label: "Курсов" },
-  { value: "20+", label: "Преподавателей" },
-  { value: "95%", label: "Довольных учеников" },
+  { value: "0", label: "Студентов" },
+  { value: "0", label: "Курсов" },
+  { value: "0", label: "Преподавателей" },
+  { value: "-", label: "Довольных учеников" },
 ] as const;
+
+async function getPublicStats(): Promise<PublicStats | null> {
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? process.env.API_URL;
+  if (!apiBase) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(
+      `${apiBase.replace(/\/$/, "")}/api/public/stats`,
+      {
+        cache: "no-store",
+      },
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return (await response.json()) as PublicStats;
+  } catch {
+    return null;
+  }
+}
 
 const features = [
   {
@@ -103,7 +134,32 @@ const steps = [
 ] as const;
 
 export default async function IndexPage() {
-  const courses = await getPublicCourses();
+  const [courses, publicStats] = await Promise.all([
+    getPublicCourses(),
+    getPublicStats(),
+  ]);
+
+  const runtimeStats = [
+    {
+      value: String(publicStats?.students ?? stats[0].value),
+      label: stats[0].label,
+    },
+    {
+      value: String(publicStats?.courses ?? stats[1].value),
+      label: stats[1].label,
+    },
+    {
+      value: String(publicStats?.teachers ?? stats[2].value),
+      label: stats[2].label,
+    },
+    {
+      value:
+        typeof publicStats?.satisfiedStudentsPercent === "number"
+          ? `${publicStats.satisfiedStudentsPercent}%`
+          : stats[3].value,
+      label: stats[3].label,
+    },
+  ];
 
   return (
     <div
@@ -408,7 +464,7 @@ export default async function IndexPage() {
         {/*  Stats  */}
         <section className="border-y border-slate-100/90 bg-white py-8 sm:py-12">
           <div className="mx-auto grid max-w-5xl grid-cols-2 gap-4 px-4 text-center sm:gap-6 sm:px-5 md:grid-cols-4 lg:px-8">
-            {stats.map((item) => (
+            {runtimeStats.map((item) => (
               <div
                 key={item.label}
                 className="rounded-2xl border border-slate-100 bg-slate-50/80 px-3 py-4 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-md"

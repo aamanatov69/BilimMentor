@@ -1,6 +1,14 @@
+import { ToastProvider } from "@/components/ui/toast-provider";
 import "katex/dist/katex.min.css";
 import type { Metadata } from "next";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
+
+const plusJakarta = Plus_Jakarta_Sans({
+  subsets: ["latin", "cyrillic-ext"],
+  display: "swap",
+  variable: "--font-plus-jakarta",
+});
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +54,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ru">
-      <body>{children}</body>
+      <body className={`${plusJakarta.variable} font-plus-jakarta`}>
+        <ToastProvider>{children}</ToastProvider>
+      </body>
     </html>
   );
 }

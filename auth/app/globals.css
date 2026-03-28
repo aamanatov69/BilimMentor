@@ -60,6 +60,18 @@ html {
   }
 }
 
+@keyframes dashboard-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .product-fade-up {
   animation: product-fade-up 700ms ease-out both;
 }
@@ -84,12 +96,37 @@ html {
   animation: product-glow-pulse 2.8s ease-in-out infinite;
 }
 
+.dashboard-rise {
+  animation: dashboard-rise-in 520ms ease-out both;
+}
+
 * {
   @apply border-border;
 }
 
 body {
   @apply bg-background text-foreground antialiased;
+}
+
+.katex-display {
+  margin: 0.9rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.15rem 0;
+}
+
+.katex-display > .katex {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.katex {
+  font-size: 1.06em;
+}
+
+.font-plus-jakarta {
+  font-family: var(--font-plus-jakarta), "Segoe UI", sans-serif;
 }
 
 .mobile-scroll {
@@ -112,7 +149,8 @@ body {
 
   .product-fade-up,
   .product-orb,
-  .product-glow {
+  .product-glow,
+  .dashboard-rise {
     animation: none;
   }
 }

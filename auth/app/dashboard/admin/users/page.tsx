@@ -20,6 +20,11 @@ type AdminRole = AdminUser["role"];
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<"all" | AdminRole>("all");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "active" | "blocked"
+  >("all");
   const [error, setError] = useState("");
   const [deleteUserId, setDeleteUserId] = useState("");
   const [deleteUserName, setDeleteUserName] = useState("");
@@ -375,8 +380,69 @@ export default function AdminUsersPage() {
   const onlineUsers = users.filter((user) => user.isOnline).length;
   const blockedUsers = users.filter((user) => user.isBlocked).length;
 
+  const filteredUsers = users.filter((user) => {
+    const query = searchQuery.trim().toLowerCase();
+    if (query) {
+      const haystack =
+        `${user.fullName} ${user.email} ${user.id}`.toLowerCase();
+      if (!haystack.includes(query)) {
+        return false;
+      }
+    }
+
+    if (roleFilter !== "all" && user.role !== roleFilter) {
+      return false;
+    }
+
+    if (statusFilter === "active" && user.isBlocked) {
+      return false;
+    }
+    if (statusFilter === "blocked" && !user.isBlocked) {
+      return false;
+    }
+
+    return true;
+  });
+
   return (
     <main className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      <section className="dashboard-rise relative mb-4 overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-amber-50 via-white to-cyan-50 p-4 sm:p-5">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-amber-300/25 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-cyan-300/25 blur-3xl" />
+        <div className="relative">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Что делать сейчас
+          </p>
+          <h2 className="mt-2 text-xl font-bold text-slate-900 sm:text-2xl">
+            Проверьте роли и доступ новых пользователей
+          </h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Начните с поиска проблемных аккаунтов, затем обновите роли и
+            статусы.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter("blocked");
+                setRoleFilter("all");
+                setSearchQuery("");
+              }}
+              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            >
+              Показать заблокированных ({blockedUsers})
+            </button>
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Создать пользователя
+            </button>
+          </div>
+        </div>
+      </section>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold sm:text-2xl">
@@ -414,92 +480,131 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
+      <div className="mt-4 grid gap-2 md:grid-cols-[1.4fr_auto_auto]">
+        <input
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder="Поиск по имени, email или ID"
+          className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none"
+        />
+        <select
+          value={roleFilter}
+          onChange={(event) =>
+            setRoleFilter(event.target.value as "all" | AdminRole)
+          }
+          className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none"
+        >
+          <option value="all">Все роли</option>
+          <option value="student">Студенты</option>
+          <option value="teacher">Преподаватели</option>
+          <option value="admin">Админы</option>
+        </select>
+        <select
+          value={statusFilter}
+          onChange={(event) =>
+            setStatusFilter(event.target.value as "all" | "active" | "blocked")
+          }
+          className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none"
+        >
+          <option value="all">Любой статус</option>
+          <option value="active">Активные</option>
+          <option value="blocked">Заблокированные</option>
+        </select>
+      </div>
+
       <div className="mt-4 space-y-3 lg:hidden">
-        {users.map((user) => (
-          <article
-            key={`mobile-${user.id}`}
-            className="rounded-lg border border-slate-200 p-3"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-medium text-slate-900">{user.fullName}</p>
-                <p className="text-xs text-slate-500">ID: {user.id}</p>
-                <p className="mt-1 break-all text-sm text-slate-600">
-                  {user.email}
-                </p>
+        {filteredUsers.length ? (
+          filteredUsers.map((user) => (
+            <article
+              key={`mobile-${user.id}`}
+              className="rounded-lg border border-slate-200 p-3"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium text-slate-900">{user.fullName}</p>
+                  <p className="text-xs text-slate-500">ID: {user.id}</p>
+                  <p className="mt-1 break-all text-sm text-slate-600">
+                    {user.email}
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700">
+                  {roleLabels[user.role]}
+                </span>
               </div>
-              <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700">
-                {roleLabels[user.role]}
-              </span>
-            </div>
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              <span
-                className={
-                  user.isBlocked
-                    ? "rounded-full bg-rose-100 px-2 py-1 text-xs text-rose-700"
-                    : "rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700"
-                }
-              >
-                {user.isBlocked ? "Заблокирован" : "Активен"}
-              </span>
-              <span
-                className={
-                  user.isOnline
-                    ? "rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700"
-                    : "rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700"
-                }
-              >
-                {user.isOnline ? "В сети" : "Не в сети"}
-              </span>
-            </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span
+                  className={
+                    user.isBlocked
+                      ? "rounded-full bg-rose-100 px-2 py-1 text-xs text-rose-700"
+                      : "rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700"
+                  }
+                >
+                  {user.isBlocked ? "Заблокирован" : "Активен"}
+                </span>
+                <span
+                  className={
+                    user.isOnline
+                      ? "rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700"
+                      : "rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700"
+                  }
+                >
+                  {user.isOnline ? "В сети" : "Не в сети"}
+                </span>
+              </div>
 
-            <p className="mt-2 text-xs text-slate-500">
-              Последний визит: {formatLastSeenAt(user.lastSeenAt)}
-            </p>
+              <p className="mt-2 text-xs text-slate-500">
+                Последний визит: {formatLastSeenAt(user.lastSeenAt)}
+              </p>
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="rounded border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                onClick={() => openRoleModal(user)}
-              >
-                Изменить роль
-              </button>
-              <button
-                type="button"
-                className="rounded border border-blue-300 px-2.5 py-1 text-xs text-blue-700 hover:bg-blue-50"
-                onClick={() => openPasswordModal(user)}
-              >
-                Сбросить пароль
-              </button>
-              <button
-                type="button"
-                className={
-                  user.isBlocked
-                    ? "rounded border border-emerald-300 px-2.5 py-1 text-xs text-emerald-700 hover:bg-emerald-50"
-                    : "rounded border border-amber-300 px-2.5 py-1 text-xs text-amber-700 hover:bg-amber-50"
-                }
-                onClick={() =>
-                  openStatusModal(
-                    user.id,
-                    user.fullName,
-                    user.isBlocked ? "unblock" : "block",
-                  )
-                }
-              >
-                {user.isBlocked ? "Разблокировать" : "Заблокировать"}
-              </button>
-              <button
-                type="button"
-                className="rounded border border-rose-300 px-2.5 py-1 text-xs text-rose-700 hover:bg-rose-50"
-                onClick={() => openDeleteModal(user.id, user.fullName)}
-              >
-                Удалить
-              </button>
-            </div>
-          </article>
-        ))}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="rounded border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                  onClick={() => openRoleModal(user)}
+                >
+                  Изменить роль
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-blue-300 px-2.5 py-1 text-xs text-blue-700 hover:bg-blue-50"
+                  onClick={() => openPasswordModal(user)}
+                >
+                  Сбросить пароль
+                </button>
+                <button
+                  type="button"
+                  className={
+                    user.isBlocked
+                      ? "rounded border border-emerald-300 px-2.5 py-1 text-xs text-emerald-700 hover:bg-emerald-50"
+                      : "rounded border border-amber-300 px-2.5 py-1 text-xs text-amber-700 hover:bg-amber-50"
+                  }
+                  onClick={() =>
+                    openStatusModal(
+                      user.id,
+                      user.fullName,
+                      user.isBlocked ? "unblock" : "block",
+                    )
+                  }
+                >
+                  {user.isBlocked ? "Разблокировать" : "Заблокировать"}
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-rose-300 px-2.5 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                  onClick={() => openDeleteModal(user.id, user.fullName)}
+                >
+                  Удалить
+                </button>
+              </div>
+            </article>
+          ))
+        ) : (
+          <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            По текущим фильтрам пользователи не найдены. Измените фильтры или
+            очистите поиск.
+          </p>
+        )}
       </div>
 
       <div className="mobile-scroll mt-4 hidden overflow-x-auto lg:block">
@@ -533,7 +638,7 @@ export default function AdminUsersPage() {
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => (
+            {filteredUsers.map((user) => (
               <tr key={user.id} className="odd:bg-white even:bg-slate-50/40">
                 <td className="border-b border-slate-100 py-3 pr-3 pl-3 text-slate-600">
                   {user.id}
@@ -616,6 +721,12 @@ export default function AdminUsersPage() {
             ))}
           </tbody>
         </table>
+        {!filteredUsers.length ? (
+          <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            По текущим фильтрам пользователи не найдены. Измените фильтры или
+            очистите поиск.
+          </p>
+        ) : null}
       </div>
 
       <ConfirmModal

@@ -1,11 +1,15 @@
 ﻿"use client";
 
-import katex from "katex";
-import "katex/contrib/mhchem";
+import { useToast } from "@/components/ui/toast-provider";
+import {
+  renderFormulaAsMathTypeHtml,
+  renderTextWithMathTypeTokensHtml,
+} from "@/lib/math-render";
 import {
   ChevronRight,
   Code2,
   FlaskConical,
+  GripVertical,
   Link2,
   Paperclip,
   Save,
@@ -14,7 +18,16 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  createElement,
+  type FormEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -674,40 +687,26 @@ function detectMaterialTypeFromMime(mimeType: string) {
   return "file";
 }
 
-function normalizeFormulaForPreview(formula: string, kind: FormulaKind) {
-  const trimmed = formula.trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  if (kind === "chemistry" && !trimmed.includes("\\ce{")) {
-    return `\\ce{${trimmed}}`;
-  }
-
-  return trimmed;
-}
-
 function renderFormulaHtml(
   formula: string,
   kind: FormulaKind,
   displayMode = true,
 ) {
-  const normalized = normalizeFormulaForPreview(formula, kind);
-  if (!normalized) {
-    return "";
-  }
-
-  return katex.renderToString(normalized, {
-    throwOnError: false,
+  return renderFormulaAsMathTypeHtml(formula, {
+    kind,
     displayMode,
-    strict: "ignore",
   });
 }
 
+function renderInlineMathInText(value: string) {
+  return renderTextWithMathTypeTokensHtml(value);
+}
+
 export default function NewTeacherCoursePage() {
+  const toast = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [step, setStep] = useState<"course" | "lesson">("course");
+  const [step, setStep] = useState<"course" | "lesson" | "preview">("course");
   const editingCourseId = useMemo(
     () => searchParams.get("courseId")?.trim() ?? "",
     [searchParams],
@@ -723,6 +722,23 @@ export default function NewTeacherCoursePage() {
   const isEditMode = Boolean(editingCourseId);
   const [targetLessonId, setTargetLessonId] = useState("");
   const [isLoadingInitial, setIsLoadingInitial] = useState(false);
+  const [existingLessons, setExistingLessons] = useState<LessonRecord[]>([]);
+  const [draggingLessonId, setDraggingLessonId] = useState("");
+  const [dropIndicatorLessonId, setDropIndicatorLessonId] = useState("");
+  const [keyboardReorderLessonId, setKeyboardReorderLessonId] = useState("");
+  const [isReordering, setIsReordering] = useState(false);
+  const [autosaveState, setAutosaveState] = useState<
+    "idle" | "saving" | "saved"
+  >("idle");
+  const [lastSavedAt, setLastSavedAt] = useState("");
+
+  const draftStorageKey = useMemo(
+    () =>
+      editingCourseId
+        ? `teacher-course-wizard-draft:${editingCourseId}`
+        : "teacher-course-wizard-draft:new",
+    [editingCourseId],
+  );
 
   const [courseTitle, setCourseTitle] = useState("");
   const [courseDescription, setCourseDescription] = useState("");
@@ -730,6 +746,11 @@ export default function NewTeacherCoursePage() {
 
   const [lessonTitle, setLessonTitle] = useState("");
   const [lessonLecture, setLessonLecture] = useState("");
+  const [lessonLectureMathTypeFormula, setLessonLectureMathTypeFormula] =
+    useState("");
+  const [mathTypeFormulaFields, setMathTypeFormulaFields] = useState<string[]>(
+    [],
+  );
   const [mathFormulaFields, setMathFormulaFields] = useState<string[]>([]);
   const [chemistryFormulaFields, setChemistryFormulaFields] = useState<
     string[]
@@ -770,6 +791,46 @@ export default function NewTeacherCoursePage() {
 
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const lessonLectureRef = useRef<HTMLTextAreaElement | null>(null);
+  const lessonLectureMathFieldRef = useRef<
+    | (HTMLElement & {
+        value?: string;
+        getValue?: (format?: string) => string;
+      })
+    | null
+  >(null);
+
+  const getMathFieldFormula = (
+    node:
+      | (HTMLElement & {
+          value?: string;
+          getValue?: (format?: string) => string;
+        })
+      | null
+      | undefined,
+  ) => {
+    if (!node) {
+      return "";
+    }
+
+    const unstyled =
+      typeof node.getValue === "function"
+        ? node.getValue("latex-unstyled")
+        : "";
+    if (unstyled) {
+      return unstyled;
+    }
+
+    return node.value ?? "";
+  };
+
+  const appendUniqueLesson = (
+    lessons: LessonRecord[],
+    lesson: LessonRecord,
+  ) => {
+    const withoutExisting = lessons.filter((item) => item.id !== lesson.id);
+    return [...withoutExisting, lesson];
+  };
 
   const mapLessons = (modules: Array<Record<string, unknown>> | undefined) => {
     const list = Array.isArray(modules) ? modules : [];
@@ -828,13 +889,15 @@ export default function NewTeacherCoursePage() {
         setCourseDescription(data.course?.description ?? "");
         setCourseLevel(data.course?.level ?? "beginner");
 
+        const lessons = mapLessons(data.course?.modules);
+        setExistingLessons(lessons);
+
         // If URL specifies step=lesson, go to lesson step
         if (requestedStep === "lesson") {
           setStep("lesson");
         }
         // If editing a specific lesson, load it and go to lesson step
         else if (requestedLessonId) {
-          const lessons = mapLessons(data.course?.modules);
           const selectedLesson =
             lessons.find((lesson) => lesson.id === requestedLessonId) ??
             lessons[0] ??
@@ -866,6 +929,256 @@ export default function NewTeacherCoursePage() {
 
     void loadExistingData();
   }, [isEditMode, editingCourseId, requestedLessonId, requestedStep]);
+
+  useEffect(() => {
+    void import("mathlive");
+  }, []);
+
+  useEffect(() => {
+    if (isEditMode) {
+      return;
+    }
+
+    const rawDraft = window.localStorage.getItem(draftStorageKey);
+    if (!rawDraft) {
+      return;
+    }
+
+    try {
+      const draft = JSON.parse(rawDraft) as {
+        courseTitle?: string;
+        courseDescription?: string;
+        courseLevel?: CourseLevel;
+        lessonTitle?: string;
+        lessonLecture?: string;
+        mathTypeFormulaFields?: string[];
+        mathFormulaFields?: string[];
+        chemistryFormulaFields?: string[];
+        codeFields?: string[];
+        lessonLinks?: string[];
+        assignmentText?: string;
+        assignmentDueAt?: string;
+        showLinks?: boolean;
+        showMaterials?: boolean;
+        showAssignmentInput?: boolean;
+        step?: "course" | "lesson" | "preview";
+        lastSavedAt?: string;
+      };
+
+      setCourseTitle(draft.courseTitle ?? "");
+      setCourseDescription(draft.courseDescription ?? "");
+      setCourseLevel(draft.courseLevel ?? "beginner");
+      setLessonTitle(draft.lessonTitle ?? "");
+      setLessonLecture(draft.lessonLecture ?? "");
+      setMathTypeFormulaFields(
+        Array.isArray(draft.mathTypeFormulaFields)
+          ? draft.mathTypeFormulaFields
+          : [],
+      );
+      setMathFormulaFields(
+        Array.isArray(draft.mathFormulaFields) ? draft.mathFormulaFields : [],
+      );
+      setChemistryFormulaFields(
+        Array.isArray(draft.chemistryFormulaFields)
+          ? draft.chemistryFormulaFields
+          : [],
+      );
+      setCodeFields(Array.isArray(draft.codeFields) ? draft.codeFields : []);
+      setLessonLinks(Array.isArray(draft.lessonLinks) ? draft.lessonLinks : []);
+      setAssignmentText(draft.assignmentText ?? "");
+      setAssignmentDueAt(draft.assignmentDueAt ?? "");
+      setShowLinks(Boolean(draft.showLinks));
+      setShowMaterials(Boolean(draft.showMaterials));
+      setShowAssignmentInput(Boolean(draft.showAssignmentInput));
+      if (draft.step) {
+        setStep(draft.step);
+      }
+      setLastSavedAt(draft.lastSavedAt ?? "");
+      setAutosaveState("saved");
+    } catch {
+      window.localStorage.removeItem(draftStorageKey);
+    }
+  }, [draftStorageKey, isEditMode]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (isSaving || isLoadingInitial) {
+        return;
+      }
+
+      setAutosaveState("saving");
+      const nextSavedAt = new Date().toISOString();
+      const draftPayload = {
+        courseTitle,
+        courseDescription,
+        courseLevel,
+        lessonTitle,
+        lessonLecture,
+        mathTypeFormulaFields,
+        mathFormulaFields,
+        chemistryFormulaFields,
+        codeFields,
+        lessonLinks,
+        assignmentText,
+        assignmentDueAt,
+        showLinks,
+        showMaterials,
+        showAssignmentInput,
+        step,
+        lastSavedAt: nextSavedAt,
+      };
+
+      window.localStorage.setItem(
+        draftStorageKey,
+        JSON.stringify(draftPayload),
+      );
+      setLastSavedAt(nextSavedAt);
+      setAutosaveState("saved");
+    }, 900);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    assignmentDueAt,
+    assignmentText,
+    chemistryFormulaFields,
+    codeFields,
+    courseDescription,
+    courseLevel,
+    courseTitle,
+    draftStorageKey,
+    isLoadingInitial,
+    isSaving,
+    lessonLecture,
+    lessonLinks,
+    lessonTitle,
+    mathTypeFormulaFields,
+    mathFormulaFields,
+    showAssignmentInput,
+    showLinks,
+    showMaterials,
+    step,
+  ]);
+
+  const handleDragOverLesson = (
+    event: React.DragEvent<HTMLDivElement>,
+    overLessonId: string,
+  ) => {
+    event.preventDefault();
+    setDropIndicatorLessonId(overLessonId);
+    if (!draggingLessonId || draggingLessonId === overLessonId) {
+      return;
+    }
+
+    setExistingLessons((previous) => {
+      const currentIndex = previous.findIndex(
+        (item) => item.id === draggingLessonId,
+      );
+      const nextIndex = previous.findIndex((item) => item.id === overLessonId);
+      if (currentIndex < 0 || nextIndex < 0) {
+        return previous;
+      }
+
+      const copy = [...previous];
+      const [dragged] = copy.splice(currentIndex, 1);
+      copy.splice(nextIndex, 0, dragged);
+      return copy;
+    });
+  };
+
+  const moveLessonByOffset = (lessonId: string, offset: -1 | 1) => {
+    setExistingLessons((previous) => {
+      const currentIndex = previous.findIndex((item) => item.id === lessonId);
+      if (currentIndex < 0) {
+        return previous;
+      }
+
+      const nextIndex = currentIndex + offset;
+      if (nextIndex < 0 || nextIndex >= previous.length) {
+        return previous;
+      }
+
+      const copy = [...previous];
+      const [moved] = copy.splice(currentIndex, 1);
+      copy.splice(nextIndex, 0, moved);
+      setDropIndicatorLessonId(copy[nextIndex]?.id ?? "");
+      return copy;
+    });
+  };
+
+  const handleLessonReorderKeyDown = (
+    event: KeyboardEvent<HTMLDivElement>,
+    lessonId: string,
+  ) => {
+    if (event.key === "Escape") {
+      setKeyboardReorderLessonId("");
+      setDropIndicatorLessonId("");
+      return;
+    }
+
+    if (event.key === " " || event.key === "Enter") {
+      event.preventDefault();
+      setKeyboardReorderLessonId((previous) =>
+        previous === lessonId ? "" : lessonId,
+      );
+      setDropIndicatorLessonId(lessonId);
+      return;
+    }
+
+    const activeLessonId = keyboardReorderLessonId || lessonId;
+    if (activeLessonId !== lessonId) {
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      moveLessonByOffset(lessonId, -1);
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      moveLessonByOffset(lessonId, 1);
+    }
+  };
+
+  const saveLessonOrder = async () => {
+    if (!editingCourseId || existingLessons.length < 2) {
+      return;
+    }
+
+    setIsReordering(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `${API_URL}/api/teacher/courses/${editingCourseId}/lessons/reorder`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            lessonIds: existingLessons.map((item) => item.id),
+          }),
+        },
+      );
+
+      const data = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        setError(data.message ?? "Не удалось сохранить порядок уроков");
+        toast.error(data.message ?? "Не удалось сохранить порядок уроков");
+      } else {
+        toast.success("Порядок уроков обновлен");
+      }
+    } catch {
+      setError("Ошибка сети при сохранении порядка уроков");
+      toast.error("Ошибка сети при сохранении порядка уроков");
+    } finally {
+      setIsReordering(false);
+    }
+  };
 
   useEffect(() => {
     const timers: number[] = [];
@@ -1024,6 +1337,47 @@ export default function NewTeacherCoursePage() {
     setLessonFiles((prev) => prev.filter((_, index) => index !== targetIndex));
   };
 
+  const insertFormulaIntoLessonText = (
+    event: MouseEvent<HTMLButtonElement>,
+  ) => {
+    event.preventDefault();
+
+    const formula =
+      getMathFieldFormula(lessonLectureMathFieldRef.current) ||
+      lessonLectureMathTypeFormula;
+    if (!formula) {
+      return;
+    }
+
+    const formulaToken = `[[MATH:${formula}]]`;
+
+    const target = lessonLectureRef.current;
+    if (!target) {
+      setLessonLecture((previous) => `${previous}${formulaToken}`);
+      return;
+    }
+
+    const start = target.selectionStart ?? lessonLecture.length;
+    const end = target.selectionEnd ?? lessonLecture.length;
+
+    setLessonLecture((previous) => {
+      const nextValue =
+        previous.slice(0, start) + formulaToken + previous.slice(end);
+
+      window.setTimeout(() => {
+        const input = lessonLectureRef.current;
+        if (!input) {
+          return;
+        }
+        const nextCursor = start + formulaToken.length;
+        input.focus();
+        input.setSelectionRange(nextCursor, nextCursor);
+      }, 0);
+
+      return nextValue;
+    });
+  };
+
   const handleLessonFilesChange = (files: FileList | null) => {
     const picked = files ? Array.from(files) : [];
     setError("");
@@ -1117,9 +1471,7 @@ export default function NewTeacherCoursePage() {
     }
   };
 
-  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
+  const saveWizard = async () => {
     if (!lessonTitle.trim()) {
       setError("Введите название урока");
       return;
@@ -1202,7 +1554,7 @@ export default function NewTeacherCoursePage() {
             },
             body: JSON.stringify({
               title: lessonTitle.trim(),
-              description: lessonLecture.trim(),
+              description: lessonLecture,
             }),
           },
         );
@@ -1226,7 +1578,7 @@ export default function NewTeacherCoursePage() {
             },
             body: JSON.stringify({
               title: lessonTitle.trim(),
-              description: lessonLecture.trim(),
+              description: lessonLecture,
             }),
           },
         );
@@ -1256,7 +1608,7 @@ export default function NewTeacherCoursePage() {
         await addMaterialToLesson(courseId, lessonId, {
           type: "lecture",
           title: `Лекция: ${lessonTitle.trim()}`,
-          text: lessonLecture.trim(),
+          text: lessonLecture,
         });
       }
 
@@ -1268,6 +1620,18 @@ export default function NewTeacherCoursePage() {
         await addMaterialToLesson(courseId, lessonId, {
           type: "lecture",
           title: `Формула по математике ${index + 1}`,
+          text: formula,
+        });
+      }
+
+      const mathTypeFormulas = mathTypeFormulaFields
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+
+      for (const [index, formula] of mathTypeFormulas.entries()) {
+        await addMaterialToLesson(courseId, lessonId, {
+          type: "lecture",
+          title: `MathType формула ${index + 1}`,
           text: formula,
         });
       }
@@ -1358,11 +1722,20 @@ export default function NewTeacherCoursePage() {
       }
 
       if (isEditMode) {
+        window.localStorage.removeItem(draftStorageKey);
+        toast.success("Курс и урок обновлены");
         router.push(`/dashboard/teacher/courses?course=${courseId}&updated=1`);
       } else {
+        window.localStorage.removeItem(draftStorageKey);
+        toast.success("Курс и урок созданы");
         router.push("/dashboard/teacher/courses?created=1");
       }
     } catch (submitError) {
+      toast.error(
+        submitError instanceof Error
+          ? submitError.message
+          : "Ошибка сети при сохранении курса",
+      );
       setError(
         submitError instanceof Error
           ? submitError.message
@@ -1371,6 +1744,11 @@ export default function NewTeacherCoursePage() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await saveWizard();
   };
 
   return (
@@ -1387,6 +1765,45 @@ export default function NewTeacherCoursePage() {
             Назад
           </Link>
         </div>
+
+        <section className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <span
+              className={
+                step === "course"
+                  ? "rounded-full bg-slate-900 px-2.5 py-1 text-white"
+                  : "rounded-full bg-white px-2.5 py-1"
+              }
+            >
+              Шаг 1: Курс
+            </span>
+            <span
+              className={
+                step === "lesson"
+                  ? "rounded-full bg-slate-900 px-2.5 py-1 text-white"
+                  : "rounded-full bg-white px-2.5 py-1"
+              }
+            >
+              Шаг 2: Урок
+            </span>
+            <span
+              className={
+                step === "preview"
+                  ? "rounded-full bg-slate-900 px-2.5 py-1 text-white"
+                  : "rounded-full bg-white px-2.5 py-1"
+              }
+            >
+              Шаг 3: Preview
+            </span>
+            <span className="ml-auto rounded-full border border-slate-200 bg-white px-2.5 py-1 normal-case tracking-normal text-slate-600">
+              {autosaveState === "saving"
+                ? "Автосохранение..."
+                : lastSavedAt
+                  ? `Сохранено: ${new Date(lastSavedAt).toLocaleTimeString("ru-RU")}`
+                  : "Автосохранение включено"}
+            </span>
+          </div>
+        </section>
 
         {error ? (
           <p className="mb-4 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -1475,6 +1892,81 @@ export default function NewTeacherCoursePage() {
                 {!isEditMode && <ChevronRight className="h-4 w-4" />}
               </button>
             </div>
+
+            {isEditMode && existingLessons.length > 0 ? (
+              <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-slate-800">
+                    Порядок уроков (drag and drop)
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void saveLessonOrder()}
+                    disabled={isReordering || existingLessons.length < 2}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    {isReordering ? "Сохранение..." : "Сохранить порядок"}
+                  </button>
+                </div>
+                <p className="mb-2 text-xs text-slate-500">
+                  Подсказка: перетаскивайте мышью или используйте клавиатуру
+                  (Tab, Enter, ArrowUp/ArrowDown, Escape).
+                </p>
+                <div className="space-y-2">
+                  {existingLessons.map((lesson, index) => (
+                    <div key={`course-step-lesson-order-${lesson.id}`}>
+                      {dropIndicatorLessonId === lesson.id &&
+                      draggingLessonId &&
+                      draggingLessonId !== lesson.id ? (
+                        <div className="mb-2 h-1 rounded-full bg-sky-500" />
+                      ) : null}
+                      <div
+                        draggable
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`Изменить порядок урока ${lesson.title}`}
+                        aria-grabbed={
+                          keyboardReorderLessonId === lesson.id ||
+                          draggingLessonId === lesson.id
+                        }
+                        onFocus={() => setDropIndicatorLessonId(lesson.id)}
+                        onKeyDown={(event) =>
+                          handleLessonReorderKeyDown(event, lesson.id)
+                        }
+                        onDragStart={() => {
+                          setDraggingLessonId(lesson.id);
+                          setDropIndicatorLessonId(lesson.id);
+                        }}
+                        onDragOver={(event) =>
+                          handleDragOverLesson(event, lesson.id)
+                        }
+                        onDragEnd={() => {
+                          setDraggingLessonId("");
+                          setDropIndicatorLessonId("");
+                        }}
+                        className={`flex items-center gap-2 rounded-lg border px-3 py-2 outline-none transition ${
+                          keyboardReorderLessonId === lesson.id
+                            ? "border-sky-400 bg-sky-50"
+                            : "border-slate-200 bg-slate-50"
+                        } ${
+                          dropIndicatorLessonId === lesson.id
+                            ? "ring-2 ring-sky-200"
+                            : ""
+                        }`}
+                      >
+                        <GripVertical className="h-4 w-4 text-slate-500" />
+                        <span className="text-xs font-semibold text-slate-500">
+                          {index + 1}
+                        </span>
+                        <span className="text-sm text-slate-800">
+                          {lesson.title}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </section>
         ) : null}
 
@@ -1512,11 +2004,85 @@ export default function NewTeacherCoursePage() {
                     Основной текст урока
                   </label>
                   <textarea
+                    ref={lessonLectureRef}
                     className="mt-1 min-h-36 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400"
                     placeholder="Теория, объяснение, шаги и примеры"
                     value={lessonLecture}
                     onChange={(event) => setLessonLecture(event.target.value)}
                   />
+                  <div className="mt-2 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+                      MathType для основного текста
+                    </p>
+                    <div className="mt-2 rounded-md border border-indigo-300 bg-white p-2">
+                      {createElement("math-field", {
+                        className:
+                          "block min-h-12 w-full rounded-md border border-indigo-200 px-3 py-2 text-indigo-900",
+                        value: lessonLectureMathTypeFormula,
+                        ref: (node: unknown) => {
+                          lessonLectureMathFieldRef.current =
+                            (node as
+                              | (HTMLElement & {
+                                  value?: string;
+                                  getValue?: (format?: string) => string;
+                                })
+                              | null) ?? null;
+                        },
+                        onInput: (event: Event) => {
+                          const target = event.target as EventTarget & {
+                            value?: string;
+                            getValue?: (format?: string) => string;
+                          };
+                          const unstyled =
+                            typeof target.getValue === "function"
+                              ? target.getValue("latex-unstyled")
+                              : "";
+                          setLessonLectureMathTypeFormula(
+                            unstyled || target.value || "",
+                          );
+                        },
+                      })}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={insertFormulaIntoLessonText}
+                        className="inline-flex items-center gap-2 rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+                      >
+                        <Sigma className="h-4 w-4" />
+                        Вставить формулу в основной текст
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLessonLectureMathTypeFormula("")}
+                        className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
+                      >
+                        Очистить формулу
+                      </button>
+                    </div>
+                    <p className="mt-2 text-xs text-indigo-700">
+                      Формула вставляется в место курсора в формате [[MATH:...]]
+                      и рендерится как формула в тексте.
+                    </p>
+                  </div>
+
+                  <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Предпросмотр основного текста
+                    </p>
+                    {lessonLecture.trim() ? (
+                      <div
+                        className="mt-2 overflow-x-auto break-words text-sm text-slate-700"
+                        dangerouslySetInnerHTML={{
+                          __html: renderInlineMathInText(lessonLecture),
+                        }}
+                      />
+                    ) : (
+                      <p className="mt-2 text-sm text-slate-500">
+                        Основной текст пока пуст.
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -1527,12 +2093,12 @@ export default function NewTeacherCoursePage() {
                     <button
                       type="button"
                       onClick={() =>
-                        setMathFormulaFields((prev) => [...prev, ""])
+                        setMathTypeFormulaFields((prev) => [...prev, ""])
                       }
-                      className="inline-flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm text-emerald-700 hover:bg-emerald-100"
+                      className="inline-flex items-center gap-2 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm text-indigo-700 hover:bg-indigo-100"
                     >
                       <Sigma className="h-4 w-4" />
-                      Формулы математики
+                      Поле MathType
                     </button>
                     <button
                       type="button"
@@ -1711,6 +2277,69 @@ export default function NewTeacherCoursePage() {
                       ) : (
                         <p className="mt-2 text-sm text-slate-500">
                           Выберите шаблон или введите формулу вручную.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {mathTypeFormulaFields.map((item, index) => (
+                  <div
+                    key={`mathtype-formula-${index + 1}`}
+                    className="rounded-xl border border-indigo-300 bg-indigo-50 p-3"
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-indigo-800">
+                        MathType формула {index + 1}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          removeFieldByIndex(setMathTypeFormulaFields, index)
+                        }
+                        className="rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-100"
+                        aria-label={`Удалить поле MathType формулы ${index + 1}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="rounded-lg border border-indigo-300 bg-white p-2">
+                      {createElement("math-field", {
+                        className:
+                          "block min-h-12 w-full rounded-md border border-indigo-200 px-3 py-2 text-indigo-900",
+                        value: item,
+                        onInput: (event: Event) => {
+                          const target = event.target as EventTarget & {
+                            value?: string;
+                          };
+                          updateFieldByIndex(
+                            setMathTypeFormulaFields,
+                            index,
+                            target.value ?? "",
+                          );
+                        },
+                      })}
+                      <p className="mt-2 text-xs text-indigo-700">
+                        Визуальный ввод как в MathType. Значение сохраняется в
+                        формате LaTeX.
+                      </p>
+                    </div>
+
+                    <div className="mt-3 rounded-lg border border-indigo-200 bg-white p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+                        Предпросмотр как в учебнике
+                      </p>
+                      {item.trim() ? (
+                        <div
+                          className="mt-2 overflow-x-auto text-slate-900"
+                          dangerouslySetInnerHTML={{
+                            __html: renderFormulaHtml(item, "math"),
+                          }}
+                        />
+                      ) : (
+                        <p className="mt-2 text-sm text-slate-500">
+                          Введите формулу через визуальный редактор.
                         </p>
                       )}
                     </div>
@@ -2051,6 +2680,14 @@ export default function NewTeacherCoursePage() {
               </button>
 
               <button
+                type="button"
+                onClick={() => setStep("preview")}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                Дальше к preview
+              </button>
+
+              <button
                 type="submit"
                 disabled={isSaving}
                 className="inline-flex items-center gap-2 rounded-lg border border-blue-400 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
@@ -2064,6 +2701,92 @@ export default function NewTeacherCoursePage() {
               </button>
             </div>
           </form>
+        ) : null}
+
+        {!isLoadingInitial && step === "preview" ? (
+          <section className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-6">
+            <div>
+              <p className="text-sm text-slate-600">Шаг 3 из 3</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-900">
+                Предпросмотр перед сохранением
+              </h2>
+            </div>
+
+            <article className="rounded-xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Курс
+              </p>
+              <p className="mt-2 text-base font-semibold text-slate-900">
+                {courseTitle || "Без названия"}
+              </p>
+              <p className="mt-1 text-sm text-slate-600">
+                {courseDescription || "Описание не задано"}
+              </p>
+              <p className="mt-2 text-xs text-slate-500">
+                Уровень: {getCourseLevelLabel(courseLevel)}
+              </p>
+            </article>
+
+            <article className="rounded-xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Урок
+              </p>
+              <p className="mt-2 text-base font-semibold text-slate-900">
+                {lessonTitle || "Без названия"}
+              </p>
+              {lessonLecture ? (
+                <div
+                  className="mt-1 overflow-x-auto break-words text-sm text-slate-600"
+                  dangerouslySetInnerHTML={{
+                    __html: renderInlineMathInText(lessonLecture),
+                  }}
+                />
+              ) : (
+                <p className="mt-1 text-sm text-slate-600">
+                  Основной текст не заполнен
+                </p>
+              )}
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  MathType:{" "}
+                  {mathTypeFormulaFields.filter((item) => item.trim()).length}
+                </p>
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  Матем. формулы:{" "}
+                  {mathFormulaFields.filter((item) => item.trim()).length}
+                </p>
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  Хим. формулы:{" "}
+                  {chemistryFormulaFields.filter((item) => item.trim()).length}
+                </p>
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  Код-блоки: {codeFields.filter((item) => item.trim()).length}
+                </p>
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  Файлы: {lessonFiles.length}
+                </p>
+              </div>
+            </article>
+
+            <div className="flex flex-wrap justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setStep("lesson")}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+              >
+                Назад к редактированию
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveWizard()}
+                disabled={isSaving}
+                className="inline-flex items-center gap-2 rounded-lg border border-blue-400 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
+              >
+                <Save className="h-4 w-4" />
+                {isSaving ? "Сохранение..." : "Сохранить курс и урок"}
+              </button>
+            </div>
+          </section>
         ) : null}
       </div>
     </main>

@@ -17,6 +17,14 @@ export default function AdminSettingsPage() {
   const [message, setMessage] = useState("");
   const [tools, setTools] = useState<ToolItem[]>([]);
   const [updatedAt, setUpdatedAt] = useState("");
+  const [history, setHistory] = useState<
+    Array<{
+      id: string;
+      action: "backup" | "restore";
+      at: string;
+      status: "success" | "error";
+    }>
+  >([]);
 
   const loadSettings = async () => {
     try {
@@ -43,7 +51,41 @@ export default function AdminSettingsPage() {
 
   useEffect(() => {
     void loadSettings();
+    const persisted = window.localStorage.getItem("admin-system-history");
+    if (persisted) {
+      try {
+        const parsed = JSON.parse(persisted) as Array<{
+          id: string;
+          action: "backup" | "restore";
+          at: string;
+          status: "success" | "error";
+        }>;
+        setHistory(parsed);
+      } catch {
+        // Ignore malformed history.
+      }
+    }
   }, []);
+
+  const pushHistory = (entry: {
+    action: "backup" | "restore";
+    status: "success" | "error";
+  }) => {
+    setHistory((previous) => {
+      const next = [
+        {
+          id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          action: entry.action,
+          at: new Date().toISOString(),
+          status: entry.status,
+        },
+        ...previous,
+      ].slice(0, 20);
+
+      window.localStorage.setItem("admin-system-history", JSON.stringify(next));
+      return next;
+    });
+  };
 
   const runSystemAction = async (action: "backup" | "restore") => {
     setError("");
@@ -56,12 +98,15 @@ export default function AdminSettingsPage() {
       const data = (await response.json()) as { message?: string };
       if (!response.ok) {
         setError(data.message ?? "Не удалось выполнить действие");
+        pushHistory({ action, status: "error" });
         return;
       }
       setMessage(data.message ?? "Действие выполнено");
+      pushHistory({ action, status: "success" });
       await loadSettings();
     } catch {
       setError("Ошибка сети");
+      pushHistory({ action, status: "error" });
     }
   };
 
@@ -121,6 +166,44 @@ export default function AdminSettingsPage() {
           </article>
         ))}
       </div>
+
+      <section className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">
+          История backup/restore
+        </h2>
+        <div className="mt-3 space-y-2">
+          {history.length ? (
+            history.map((item) => (
+              <article
+                key={item.id}
+                className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2"
+              >
+                <div>
+                  <p className="text-sm font-medium text-slate-800">
+                    {item.action === "backup" ? "Backup" : "Restore"}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {new Date(item.at).toLocaleString("ru-RU")}
+                  </p>
+                </div>
+                <span
+                  className={
+                    item.status === "success"
+                      ? "rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700"
+                      : "rounded-full bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700"
+                  }
+                >
+                  {item.status === "success" ? "success" : "error"}
+                </span>
+              </article>
+            ))
+          ) : (
+            <p className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+              История операций пока пуста.
+            </p>
+          )}
+        </div>
+      </section>
     </main>
   );
 }

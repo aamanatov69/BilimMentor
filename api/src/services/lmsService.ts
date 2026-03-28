@@ -10,7 +10,11 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { lmsRepository } from "../repositories/lmsRepository";
 import { ensure, HttpError } from "../utils/httpError";
-import { createToken } from "../utils/jwt";
+import {
+  createCourseInviteToken,
+  createToken,
+  verifyCourseInviteToken,
+} from "../utils/jwt";
 import {
   buildResetPasswordLink,
   sendResetPasswordEmail,
@@ -396,8 +400,13 @@ export async function register(input: {
   phone?: string;
   password?: string;
   role?: UserRole;
+  courseInviteToken?: string;
 }) {
   const { fullName, email, phone, password, role } = input;
+  const inviteToken =
+    typeof input.courseInviteToken === "string"
+      ? input.courseInviteToken.trim()
+      : "";
 
   ensure(
     fullName && email && phone && password && role,
@@ -409,6 +418,23 @@ export async function register(input: {
     400,
     "Операция недоступна",
   );
+
+  const invitePayload = inviteToken
+    ? verifyCourseInviteToken(inviteToken)
+    : null;
+
+  if (inviteToken) {
+    ensure(
+      invitePayload,
+      400,
+      "Ссылка приглашения недействительна или устарела",
+    );
+    ensure(
+      role === UserRole.student,
+      400,
+      "Приглашение доступно только для роли student",
+    );
+  }
 
   const normalizedEmail = email.trim().toLowerCase();
   const normalizedPhone = phone.trim();
@@ -422,16 +448,70 @@ export async function register(input: {
 
   ensure(!userExists, 409, "Операция недоступна");
 
-  const createdUser = await lmsRepository.prisma.user.create({
-    data: {
-      id: await lmsRepository.nextUserId(),
-      fullName: fullName.trim(),
-      email: normalizedEmail,
-      phone: normalizedPhone,
-      passwordHash: await bcrypt.hash(password, 12),
-      role,
+  const registrationResult = await lmsRepository.prisma.$transaction(
+    async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          id: await lmsRepository.nextUserId(),
+          fullName: fullName.trim(),
+          email: normalizedEmail,
+          phone: normalizedPhone,
+          passwordHash: await bcrypt.hash(password, 12),
+          role,
+        },
+      });
+
+      let autoEnrollment:
+        | {
+            courseId: string;
+            courseTitle: string;
+          }
+        | undefined;
+
+      if (invitePayload) {
+        const invitedCourse = await tx.course.findUnique({
+          where: { id: invitePayload.courseId },
+          select: { id: true, title: true, teacherId: true },
+        });
+
+        ensure(
+          invitedCourse && invitedCourse.teacherId === invitePayload.teacherId,
+          400,
+          "Ссылка приглашения недействительна или устарела",
+        );
+
+        await tx.enrollment.create({
+          data: {
+            id: await lmsRepository.nextEnrollmentId(),
+            courseId: invitedCourse.id,
+            studentId: createdUser.id,
+            approvedByTeacherId: invitedCourse.teacherId,
+            approvedAt: new Date(),
+          },
+        });
+
+        await tx.notification.create({
+          data: {
+            id: await lmsRepository.nextNotificationId(),
+            type: NotificationType.system_message,
+            title: "Доступ к курсу открыт",
+            body: `Вы автоматически зачислены на курс \"${invitedCourse.title}\".`,
+            targetRole: NotificationTargetRole.student,
+            userId: createdUser.id,
+          },
+        });
+
+        autoEnrollment = {
+          courseId: invitedCourse.id,
+          courseTitle: invitedCourse.title,
+        };
+      }
+
+      return { createdUser, autoEnrollment };
     },
-  });
+  );
+
+  const { createdUser } = registrationResult;
 
   return {
     message: "Успешно",
@@ -443,6 +523,7 @@ export async function register(input: {
       phone: createdUser.phone,
       role: createdUser.role,
     },
+    autoEnrollment: registrationResult.autoEnrollment,
   };
 }
 
@@ -757,6 +838,36 @@ export async function listPublicCourses() {
   });
 
   return { courses: courses.map((item) => coursePreview(item)) };
+}
+
+export async function getPublicStats() {
+  const [students, teachers, publishedCourses, gradeAggregate] =
+    await Promise.all([
+      lmsRepository.prisma.user.count({ where: { role: UserRole.student } }),
+      lmsRepository.prisma.user.count({ where: { role: UserRole.teacher } }),
+      lmsRepository.prisma.course.count({ where: { isPublished: true } }),
+      lmsRepository.prisma.grade.aggregate({
+        _avg: { score: true },
+      }),
+    ]);
+
+  const averageScore =
+    typeof gradeAggregate._avg.score === "undefined" ||
+    gradeAggregate._avg.score === null
+      ? null
+      : Number(gradeAggregate._avg.score);
+
+  const satisfiedStudentsPercent =
+    averageScore === null
+      ? null
+      : Math.max(0, Math.min(100, Math.round(averageScore)));
+
+  return {
+    students,
+    courses: publishedCourses,
+    teachers,
+    satisfiedStudentsPercent,
+  };
 }
 
 export async function listNotifications(userId?: string) {
@@ -1299,6 +1410,7 @@ export async function adminUpdateCourse(
     description?: string;
     level?: unknown;
     teacher_id?: string;
+    isPublished?: unknown;
   },
 ) {
   const course = await lmsRepository.prisma.course.findUnique({
@@ -1336,6 +1448,10 @@ export async function adminUpdateCourse(
     ensure(teacher, 404, "Ресурс не найден");
   }
 
+  if (typeof input.isPublished !== "undefined") {
+    ensure(typeof input.isPublished === "boolean", 400, "Некорректный запрос");
+  }
+
   const normalizedUpdateLevel =
     typeof input.level === "string" &&
     isCourseLevel(input.level.trim().toLowerCase())
@@ -1358,6 +1474,8 @@ export async function adminUpdateCourse(
       level: normalizedUpdateLevel,
       teacherId:
         typeof input.teacher_id === "string" ? input.teacher_id : undefined,
+      isPublished:
+        typeof input.isPublished === "boolean" ? input.isPublished : undefined,
     },
   });
 
@@ -1378,6 +1496,69 @@ export async function adminDeleteCourse(courseId: string) {
   return {
     message: "Успешно",
     course: { ...removed, modules: readModules(removed.modules) },
+  };
+}
+
+type AdminCourseBulkAction = "publish" | "unpublish" | "delete";
+
+function isAdminCourseBulkAction(
+  value: unknown,
+): value is AdminCourseBulkAction {
+  return value === "publish" || value === "unpublish" || value === "delete";
+}
+
+export async function adminBulkCourses(input: {
+  courseIds?: unknown;
+  action?: unknown;
+}) {
+  ensure(Array.isArray(input.courseIds), 400, "Некорректный запрос");
+  ensure(isAdminCourseBulkAction(input.action), 400, "Некорректный запрос");
+
+  const normalizedCourseIds = Array.from(
+    new Set(
+      input.courseIds
+        .map((item) => asString(item).trim())
+        .filter((item) => item.length > 0),
+    ),
+  );
+
+  ensure(normalizedCourseIds.length > 0, 400, "Некорректный запрос");
+  ensure(normalizedCourseIds.length <= 200, 400, "Слишком много курсов");
+
+  const existing = await lmsRepository.prisma.course.findMany({
+    where: { id: { in: normalizedCourseIds } },
+    select: { id: true },
+  });
+  ensure(existing.length > 0, 404, "Ресурс не найден");
+
+  const existingSet = new Set(existing.map((item) => item.id));
+  const applicableIds = normalizedCourseIds.filter((item) =>
+    existingSet.has(item),
+  );
+  const missingCourseIds = normalizedCourseIds.filter(
+    (item) => !existingSet.has(item),
+  );
+
+  let affectedCount = 0;
+  if (input.action === "delete") {
+    const deleted = await lmsRepository.prisma.course.deleteMany({
+      where: { id: { in: applicableIds } },
+    });
+    affectedCount = deleted.count;
+  } else {
+    const updated = await lmsRepository.prisma.course.updateMany({
+      where: { id: { in: applicableIds } },
+      data: { isPublished: input.action === "publish" },
+    });
+    affectedCount = updated.count;
+  }
+
+  return {
+    message: "Успешно",
+    action: input.action,
+    requestedCount: normalizedCourseIds.length,
+    affectedCount,
+    missingCourseIds,
   };
 }
 
@@ -2023,6 +2204,37 @@ export async function teacherCourses(userId?: string) {
   };
 }
 
+export async function teacherCreateCourseShareInvite(
+  userId: string | undefined,
+  courseId: string,
+) {
+  const currentUser = await requireCurrentUser(userId);
+  ensure(currentUser.role === UserRole.teacher, 403, "Доступ запрещен");
+
+  const course = await lmsRepository.prisma.course.findUnique({
+    where: { id: courseId },
+    select: { id: true, title: true, teacherId: true },
+  });
+  ensure(course, 404, "Ресурс не найден");
+  ensure(course.teacherId === currentUser.id, 403, "Операция недоступна");
+
+  const inviteToken = createCourseInviteToken({
+    courseId: course.id,
+    teacherId: currentUser.id,
+  });
+  const verifiedInvite = verifyCourseInviteToken(inviteToken);
+
+  return {
+    message: "Успешно",
+    course: {
+      id: course.id,
+      title: course.title,
+    },
+    inviteToken,
+    expiresAt: verifiedInvite?.expiresAt ?? null,
+  };
+}
+
 export async function teacherCreateCourse(
   userId: string | undefined,
   input: {
@@ -2590,7 +2802,10 @@ export async function teacherCreateLesson(
     id: makeEntityId("lesson"),
     type: "lesson",
     title,
-    description: (input.description ?? "").trim() || null,
+    description:
+      (input.description ?? "").trim().length > 0
+        ? (input.description ?? "")
+        : null,
     isVisibleToStudents: false,
     createdAt: new Date().toISOString(),
     materials: [] as Record<string, unknown>[],
@@ -2646,7 +2861,10 @@ export async function teacherUpdateLesson(
   const lesson = {
     ...modules[lessonIndex],
     title: normalizedTitle,
-    description: (input.description ?? "").trim() || null,
+    description:
+      (input.description ?? "").trim().length > 0
+        ? (input.description ?? "")
+        : null,
     updatedAt: new Date().toISOString(),
   };
 
@@ -2698,6 +2916,75 @@ export async function teacherDeleteLesson(
   };
 }
 
+export async function teacherReorderLessons(
+  userId: string | undefined,
+  courseId: string,
+  lessonIds?: unknown,
+) {
+  const currentUser = await requireCurrentUser(userId);
+  ensure(currentUser.role === UserRole.teacher, 403, "Доступ запрещен");
+
+  const course = await lmsRepository.prisma.course.findUnique({
+    where: { id: courseId },
+  });
+  ensure(course, 404, "Ресурс не найден");
+  ensure(course.teacherId === currentUser.id, 403, "Операция недоступна");
+
+  ensure(Array.isArray(lessonIds), 400, "Некорректный запрос");
+
+  const normalizedLessonIds = lessonIds
+    .map((item) => asString(item).trim())
+    .filter((item) => item.length > 0);
+
+  const modules = asModuleRecordArray(course.modules);
+  const lessonModules = modules.filter(
+    (item) => asString(item.type).toLowerCase() === "lesson",
+  );
+  const nonLessonModules = modules.filter(
+    (item) => asString(item.type).toLowerCase() !== "lesson",
+  );
+
+  ensure(
+    normalizedLessonIds.length === lessonModules.length,
+    400,
+    "Некорректный запрос",
+  );
+
+  const lessonById = new Map(
+    lessonModules.map((item) => [asString(item.id).trim(), item]),
+  );
+
+  const uniqueLessonIds = new Set(normalizedLessonIds);
+  ensure(
+    uniqueLessonIds.size === normalizedLessonIds.length,
+    400,
+    "Конфликт данных",
+  );
+
+  const reorderedLessons = normalizedLessonIds.map((lessonId) => {
+    const lesson = lessonById.get(lessonId);
+    ensure(lesson, 400, "Некорректный запрос");
+    return lesson;
+  });
+
+  const nextModules = [...reorderedLessons, ...nonLessonModules].map(
+    (item) => ({
+      ...item,
+      updatedAt: new Date().toISOString(),
+    }),
+  );
+
+  const updated = await lmsRepository.prisma.course.update({
+    where: { id: courseId },
+    data: { modules: nextModules as Prisma.InputJsonValue },
+  });
+
+  return {
+    message: "Успешно",
+    course: { ...updated, modules: readModules(updated.modules) },
+  };
+}
+
 export async function teacherAddLessonMaterial(
   userId: string | undefined,
   courseId: string,
@@ -2729,7 +3016,8 @@ export async function teacherAddLessonMaterial(
   const lesson = { ...modules[lessonIndex] };
   const materialType = (input.type ?? "material").trim().toLowerCase();
   const title = (input.title ?? "").trim();
-  const text = (input.text ?? "").trim();
+  const rawText = input.text ?? "";
+  const text = rawText.trim();
   const url = (input.url ?? "").trim();
   const table = (input.table ?? "").trim();
   const formula = (input.formula ?? "").trim();
@@ -2762,7 +3050,7 @@ export async function teacherAddLessonMaterial(
     id: makeEntityId("mat"),
     type: materialType,
     title,
-    text: text || null,
+    text: text ? rawText : null,
     url: url || null,
     table: table || null,
     formula: formula || null,

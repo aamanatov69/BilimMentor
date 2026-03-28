@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 type PublicCourse = {
@@ -70,7 +71,7 @@ function Item({
   return (
     <AnimateView
       name={animationName}
-      className={`w-full overflow-hidden rounded-3xl border border-white/50 bg-white/65 shadow-[0_10px_28px_rgba(15,23,42,0.12)] backdrop-blur md:w-72 md:flex-none xl:w-80 ${className ?? ""}`}
+      className={`w-full overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.1)] md:w-72 md:flex-none xl:w-80 ${className ?? ""}`}
     >
       <button
         type="button"
@@ -80,34 +81,34 @@ function Item({
         <div
           className={`relative min-h-[255px] bg-gradient-to-br sm:min-h-[275px] ${visual}`}
         >
-          <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-white/20 blur-2xl transition group-hover:scale-110" />
-          <div className="pointer-events-none absolute -left-10 bottom-8 h-24 w-24 rounded-full bg-sky-200/30 blur-2xl" />
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/92 via-slate-900/45 to-slate-900/20" />
-          <div className="relative z-10 flex min-h-[255px] items-end p-3.5 text-white sm:min-h-[275px] sm:p-4.5">
+          <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-white/35 blur-2xl transition group-hover:scale-110" />
+          <div className="pointer-events-none absolute -left-10 bottom-8 h-24 w-24 rounded-full bg-white/25 blur-2xl" />
+          <div className="absolute inset-0 bg-gradient-to-t from-white/95 via-white/80 to-white/40" />
+          <div className="relative z-10 flex min-h-[255px] items-end p-3.5 text-slate-900 sm:min-h-[275px] sm:p-4.5">
             <div className="flex w-full min-h-[182px] flex-col justify-end gap-2.5">
               <div className="mb-1 flex flex-wrap gap-1.5 text-[11px] font-medium">
                 {course.category &&
                 course.category.trim() &&
                 course.category.trim().toLowerCase() !== "general" ? (
-                  <span className="rounded-full border border-white/30 bg-white/15 px-2.5 py-1 backdrop-blur">
+                  <span className="rounded-full border border-slate-300 bg-white/90 px-2.5 py-1">
                     {course.category}
                   </span>
                 ) : null}
-                <span className="rounded-full border border-white/30 bg-white/15 px-2.5 py-1 backdrop-blur">
+                <span className="rounded-full border border-slate-300 bg-white/90 px-2.5 py-1">
                   {levelLabel(course.level)}
                 </span>
               </div>
               <h3
-                className="line-clamp-2 min-h-[3.3rem] text-[1.1rem] font-bold leading-snug tracking-tight sm:min-h-[3.7rem] sm:text-[1.28rem]"
+                className="line-clamp-2 min-h-[3.3rem] text-[1.1rem] font-bold leading-snug tracking-tight text-slate-900 sm:min-h-[3.7rem] sm:text-[1.28rem]"
                 style={{ fontFamily: '"Montserrat", "Manrope", sans-serif' }}
               >
                 {course.title}
               </h3>
-              <p className="line-clamp-3 min-h-[4.6rem] text-sm font-medium leading-6 text-slate-100/95">
+              <p className="line-clamp-3 min-h-[4.6rem] text-sm font-medium leading-6 text-slate-700">
                 {course.description?.trim() ||
                   "Описание курса будет добавлено в ближайшее время."}
               </p>
-              <span className="inline-flex w-fit items-center gap-1 rounded-xl bg-white/95 px-3.5 py-1.5 text-xs font-semibold text-slate-900 transition group-hover:bg-white sm:px-4 sm:py-2 sm:text-sm">
+              <span className="inline-flex w-fit items-center gap-1 rounded-xl bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white transition group-hover:bg-slate-800 sm:px-4 sm:py-2 sm:text-sm">
                 Подробнее
                 <span aria-hidden="true">{"->"}</span>
               </span>
@@ -147,7 +148,7 @@ function Modal({
     <AnimatePresence>
       <motion.div
         key="backdrop"
-        className="fixed inset-0 z-40 bg-slate-950/70 p-2 sm:p-4"
+        className="fixed inset-0 z-40 bg-slate-900/30 p-2 sm:p-4"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -160,30 +161,36 @@ function Modal({
         <div className="flex min-h-full items-center justify-center">
           <AnimateView
             name={animationName}
-            className={`w-full ${modalWidthClass} overflow-x-hidden overflow-y-hidden rounded-3xl border border-white/25 bg-slate-900 shadow-[0_24px_60px_rgba(2,6,23,0.55)]`}
+            className={`w-full ${modalWidthClass} overflow-x-hidden overflow-y-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_22px_55px_rgba(15,23,42,0.2)]`}
           >
             <div
               className={`relative max-h-[92svh] overflow-x-hidden overflow-y-auto bg-gradient-to-br ${modalVisual}`}
               onClick={onClose}
             >
-              <div className="pointer-events-none absolute -left-24 -top-20 h-52 w-52 rounded-full bg-white/20 blur-3xl" />
-              <div className="pointer-events-none absolute -right-20 bottom-8 h-40 w-40 rounded-full bg-cyan-200/20 blur-3xl" />
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-900/60 to-slate-900/30" />
+              <div className="pointer-events-none absolute -left-24 -top-20 h-52 w-52 rounded-full bg-white/35 blur-3xl" />
+              <div className="pointer-events-none absolute -right-20 bottom-8 h-40 w-40 rounded-full bg-white/25 blur-3xl" />
+              <div className="absolute inset-0 bg-gradient-to-t from-white/95 via-white/85 to-white/50" />
 
-              <div className="relative z-10 p-4 text-white sm:p-6">
-                <div className="w-full rounded-2xl border border-white/20 bg-slate-950/65 p-4 shadow-lg backdrop-blur-sm sm:p-6">
+              <div className="relative z-10 p-4 text-slate-900 sm:p-6">
+                <div className="w-full rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-lg sm:p-6">
                   <div className="mb-4 flex items-start justify-end gap-3">
+                    <Link
+                      href="/login"
+                      className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-800"
+                    >
+                      Войти
+                    </Link>
                     <button
                       type="button"
                       onClick={onClose}
-                      className="rounded-lg border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/20"
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
                     >
                       Закрыть
                     </button>
                   </div>
 
                   <h3
-                    className="break-words text-xl font-bold leading-snug tracking-tight text-white sm:text-3xl"
+                    className="break-words text-xl font-bold leading-snug tracking-tight text-slate-900 sm:text-3xl"
                     style={{
                       fontFamily: '"Montserrat", "Manrope", sans-serif',
                     }}
@@ -191,7 +198,7 @@ function Modal({
                     {selectedCourse.title}
                   </h3>
 
-                  <p className="mt-3 break-words text-sm font-medium leading-7 text-slate-100 sm:text-base">
+                  <p className="mt-3 break-words text-sm font-medium leading-7 text-slate-700 sm:text-base">
                     {descriptionText}
                   </p>
                 </div>
