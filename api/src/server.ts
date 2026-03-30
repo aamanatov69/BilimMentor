@@ -10,7 +10,7 @@ const PORT = Number(process.env.PORT ?? 4000);
 function resolveTrustProxySetting() {
   const raw = process.env.TRUST_PROXY?.trim();
   if (!raw) {
-    return process.env.NODE_ENV === "production" ? 1 : false;
+    return 1;
   }
 
   if (raw === "true") {
@@ -26,8 +26,8 @@ function resolveTrustProxySetting() {
     return asNumber;
   }
 
-  // Keep production safe behind a proxy even if env value is invalid.
-  return process.env.NODE_ENV === "production" ? 1 : false;
+  // Keep rate limiting accurate behind reverse proxies if env value is invalid.
+  return 1;
 }
 
 app.set("trust proxy", resolveTrustProxySetting());
