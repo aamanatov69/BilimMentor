@@ -7,6 +7,8 @@ import { lmsRoutes } from "./routes/lmsRoutes";
 export const app = express();
 const PORT = Number(process.env.PORT ?? 4000);
 
+app.set("trust proxy", 1);
+
 const trustProxy = process.env.TRUST_PROXY;
 if (trustProxy) {
   app.set("trust proxy", trustProxy);
