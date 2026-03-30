@@ -7,12 +7,30 @@ import { lmsRoutes } from "./routes/lmsRoutes";
 export const app = express();
 const PORT = Number(process.env.PORT ?? 4000);
 
-app.set("trust proxy", 1);
+function resolveTrustProxySetting() {
+  const raw = process.env.TRUST_PROXY?.trim();
+  if (!raw) {
+    return process.env.NODE_ENV === "production" ? 1 : false;
+  }
 
-const trustProxy = process.env.TRUST_PROXY;
-if (trustProxy) {
-  app.set("trust proxy", trustProxy);
+  if (raw === "true") {
+    return true;
+  }
+
+  if (raw === "false") {
+    return false;
+  }
+
+  const asNumber = Number(raw);
+  if (Number.isInteger(asNumber) && asNumber >= 0) {
+    return asNumber;
+  }
+
+  // Keep production safe behind a proxy even if env value is invalid.
+  return process.env.NODE_ENV === "production" ? 1 : false;
 }
+
+app.set("trust proxy", resolveTrustProxySetting());
 
 app.disable("x-powered-by");
 
