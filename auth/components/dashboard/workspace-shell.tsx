@@ -10,9 +10,7 @@ import {
   Bell,
   ChevronDown,
   LogOut,
-  Menu,
   Search,
-  X,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -100,7 +98,6 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
   const router = useRouter();
 
   const [profileName, setProfileName] = useState(props.defaultName);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
@@ -476,9 +473,27 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
   }, [searchOpen, notificationsOpen]);
 
   useEffect(() => {
-    setMobileOpen(false);
     setNotificationsOpen(false);
   }, [pathname]);
+
+  const shouldShowAlertDot = (href: string) => {
+    if (alertsCount <= 0) {
+      return false;
+    }
+
+    if (props.role === "student") {
+      return href === "/dashboard/student/assignments";
+    }
+
+    if (props.role === "teacher") {
+      return href === "/dashboard/teacher/grades";
+    }
+
+    return href === "/dashboard/admin/requests";
+  };
+
+  const hasFixedMobileButtons =
+    props.role === "teacher" || props.role === "student";
 
   const filteredSearch = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -562,22 +577,15 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#e0f2fe,transparent_34%),radial-gradient(circle_at_85%_12%,#cffafe,transparent_30%),radial-gradient(circle_at_bottom_right,#fef3c7,transparent_32%),#f8fafc] text-slate-800">
+    <div className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,#e0f2fe,transparent_34%),radial-gradient(circle_at_85%_12%,#cffafe,transparent_30%),radial-gradient(circle_at_bottom_right,#fef3c7,transparent_32%),#f8fafc] text-slate-800">
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-[1440px] items-center gap-3 px-4 lg:px-6">
-          <button
-            type="button"
-            onClick={() => setMobileOpen(true)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 lg:hidden"
-            aria-label="Открыть меню"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-
           <div className="min-w-0">
             <p className="text-sm font-bold text-slate-900">{props.title}</p>
             {props.subtitle ? (
-              <p className="text-xs text-slate-500">{props.subtitle}</p>
+              <p className="hidden text-xs text-slate-500 sm:block">
+                {props.subtitle}
+              </p>
             ) : null}
           </div>
 
@@ -672,77 +680,151 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
               </button>
 
               {notificationsOpen ? (
-                <div className="absolute right-0 top-12 w-[360px] rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur">
-                  <div className="mb-2 flex items-center justify-between">
-                    <p className="text-sm font-semibold text-slate-900">
-                      Уведомления
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => void markAllRead()}
-                      className="text-xs font-semibold text-sky-700 hover:text-sky-900"
-                    >
-                      Отметить все
-                    </button>
-                  </div>
-
-                  <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
-                    {(["assignments", "courses", "system"] as const).map(
-                      (groupKey) => {
-                        const entries = notificationGroups[groupKey];
-                        if (!entries.length) {
-                          return null;
-                        }
-
-                        const groupTitle =
-                          groupKey === "assignments"
-                            ? "Задания"
-                            : groupKey === "courses"
-                              ? "Курсы"
-                              : "Система";
-
-                        return (
-                          <section key={groupKey}>
-                            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              {groupTitle}
-                            </p>
-                            <div className="space-y-1">
-                              {entries.slice(0, 6).map((item) => (
-                                <button
-                                  key={item.id}
-                                  type="button"
-                                  onClick={() => void markAsRead(item.id)}
-                                  className="w-full rounded-xl border border-slate-200 p-2 text-left hover:bg-slate-50"
-                                >
-                                  <p className="text-xs font-semibold text-slate-900">
-                                    {localizeNotificationTitle(item.title)}
-                                  </p>
-                                  <p className="mt-0.5 line-clamp-2 text-xs text-slate-600">
-                                    {localizeNotificationBody(item.body)}
-                                  </p>
-                                  <div className="mt-1 flex items-center justify-between">
-                                    <span className="text-[11px] text-slate-500">
-                                      {localizeNotificationType(item.type)}
-                                    </span>
-                                    <span className="text-[11px] text-slate-400">
-                                      {formatNotificationDate(item.createdAt)}
-                                    </span>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </section>
-                        );
-                      },
-                    )}
-
-                    {!notifications.length ? (
-                      <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                        Уведомлений пока нет
+                <>
+                  <div className="fixed left-2 right-2 top-[4.25rem] z-50 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur md:hidden">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-sm font-semibold text-slate-900">
+                        Уведомления
                       </p>
-                    ) : null}
+                      <button
+                        type="button"
+                        onClick={() => void markAllRead()}
+                        className="text-xs font-semibold text-sky-700 hover:text-sky-900"
+                      >
+                        Отметить все
+                      </button>
+                    </div>
+
+                    <div className="max-h-[calc(100dvh-7.5rem)] space-y-3 overflow-y-auto pr-1">
+                      {(["assignments", "courses", "system"] as const).map(
+                        (groupKey) => {
+                          const entries = notificationGroups[groupKey];
+                          if (!entries.length) {
+                            return null;
+                          }
+
+                          const groupTitle =
+                            groupKey === "assignments"
+                              ? "Задания"
+                              : groupKey === "courses"
+                                ? "Курсы"
+                                : "Система";
+
+                          return (
+                            <section key={groupKey}>
+                              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                {groupTitle}
+                              </p>
+                              <div className="space-y-1">
+                                {entries.slice(0, 6).map((item) => (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => void markAsRead(item.id)}
+                                    className="w-full rounded-xl border border-slate-200 p-2 text-left hover:bg-slate-50"
+                                  >
+                                    <p className="text-xs font-semibold text-slate-900">
+                                      {localizeNotificationTitle(item.title)}
+                                    </p>
+                                    <p className="mt-0.5 line-clamp-2 text-xs text-slate-600">
+                                      {localizeNotificationBody(item.body)}
+                                    </p>
+                                    <div className="mt-1 flex items-center justify-between">
+                                      <span className="text-[11px] text-slate-500">
+                                        {localizeNotificationType(item.type)}
+                                      </span>
+                                      <span className="text-[11px] text-slate-400">
+                                        {formatNotificationDate(item.createdAt)}
+                                      </span>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </section>
+                          );
+                        },
+                      )}
+
+                      {!notifications.length ? (
+                        <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                          Уведомлений пока нет
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
+
+                  <div className="absolute right-0 top-12 hidden w-[360px] rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur md:block">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-sm font-semibold text-slate-900">
+                        Уведомления
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void markAllRead()}
+                        className="text-xs font-semibold text-sky-700 hover:text-sky-900"
+                      >
+                        Отметить все
+                      </button>
+                    </div>
+
+                    <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
+                      {(["assignments", "courses", "system"] as const).map(
+                        (groupKey) => {
+                          const entries = notificationGroups[groupKey];
+                          if (!entries.length) {
+                            return null;
+                          }
+
+                          const groupTitle =
+                            groupKey === "assignments"
+                              ? "Задания"
+                              : groupKey === "courses"
+                                ? "Курсы"
+                                : "Система";
+
+                          return (
+                            <section key={groupKey}>
+                              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                {groupTitle}
+                              </p>
+                              <div className="space-y-1">
+                                {entries.slice(0, 6).map((item) => (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => void markAsRead(item.id)}
+                                    className="w-full rounded-xl border border-slate-200 p-2 text-left hover:bg-slate-50"
+                                  >
+                                    <p className="text-xs font-semibold text-slate-900">
+                                      {localizeNotificationTitle(item.title)}
+                                    </p>
+                                    <p className="mt-0.5 line-clamp-2 text-xs text-slate-600">
+                                      {localizeNotificationBody(item.body)}
+                                    </p>
+                                    <div className="mt-1 flex items-center justify-between">
+                                      <span className="text-[11px] text-slate-500">
+                                        {localizeNotificationType(item.type)}
+                                      </span>
+                                      <span className="text-[11px] text-slate-400">
+                                        {formatNotificationDate(item.createdAt)}
+                                      </span>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </section>
+                          );
+                        },
+                      )}
+
+                      {!notifications.length ? (
+                        <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                          Уведомлений пока нет
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </>
               ) : null}
             </div>
 
@@ -768,8 +850,8 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-[1440px]">
-        <aside className="hidden w-72 border-r border-slate-200/70 bg-white/70 p-4 backdrop-blur-xl lg:block">
+      <div className="mx-auto flex w-full max-w-[1440px]">
+        <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-72 overflow-y-auto border-r border-slate-200/70 bg-white/70 p-4 backdrop-blur-xl lg:block">
           <nav className="space-y-1">
             {props.navItems.map((item) => {
               const Icon = item.icon;
@@ -793,12 +875,12 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
           </nav>
         </aside>
 
-        <main className="min-h-[calc(100vh-4rem)] flex-1 p-4 md:p-5 lg:p-6">
-          <nav className="mb-4 flex flex-wrap items-center gap-1 text-xs text-slate-500">
+        <main className="min-h-[calc(100vh-4rem)] flex-1 p-4 pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:p-5 md:pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:p-6 lg:pb-6">
+          <nav className="mb-4 flex items-center gap-1 overflow-x-auto pb-1 text-xs text-slate-500">
             {breadcrumbs.map((item, index) => (
               <div
                 key={`${item.href}-${index}`}
-                className="flex items-center gap-1"
+                className="flex shrink-0 items-center gap-1"
               >
                 {index > 0 ? <span>/</span> : null}
                 {item.isCurrent ? (
@@ -820,50 +902,73 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
         </main>
       </div>
 
-      {mobileOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <button
-            type="button"
-            className="absolute inset-0 bg-slate-900/45"
-            onClick={() => setMobileOpen(false)}
-            aria-label="Закрыть меню"
-          />
-          <aside className="relative h-full w-[280px] border-r border-slate-200 bg-white p-4 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between">
-              <p className="text-sm font-bold text-slate-900">Навигация</p>
-              <button
-                type="button"
-                onClick={() => setMobileOpen(false)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200"
-                aria-label="Закрыть"
+      <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white/95 pb-[max(env(safe-area-inset-bottom),0.25rem)] backdrop-blur lg:hidden">
+        <div
+          className={
+            hasFixedMobileButtons
+              ? "mx-auto grid w-full max-w-[1440px] items-stretch gap-1 px-1 pt-1"
+              : "mx-auto flex max-w-[1440px] items-stretch gap-1 overflow-x-auto px-1 pt-1 [scrollbar-width:none]"
+          }
+          style={
+            hasFixedMobileButtons
+              ? {
+                  gridTemplateColumns: `repeat(${props.navItems.length}, minmax(0, 1fr))`,
+                }
+              : undefined
+          }
+        >
+          {props.navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = isActivePath(item.href, item.exact);
+            const showAlertDot = shouldShowAlertDot(item.href);
+            const showUnreadBadge =
+              item.href.endsWith("/notifications") && unreadCount > 0;
+
+            return (
+              <Link
+                key={`mobile-${item.href}`}
+                href={item.href}
+                className={
+                  hasFixedMobileButtons
+                    ? "flex min-h-[56px] min-w-0 w-full flex-col items-center justify-center gap-1 rounded-lg border-0 px-1 py-2 text-center"
+                    : "flex min-h-[56px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-1 rounded-lg border-0 px-1 py-2 text-center"
+                }
               >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <nav className="space-y-1">
-              {props.navItems.map((item) => {
-                const Icon = item.icon;
-                const active = isActivePath(item.href, item.exact);
-                return (
-                  <Link
-                    key={`mobile-${item.href}`}
-                    href={item.href}
-                    onClick={() => setMobileOpen(false)}
-                    className={
-                      active
-                        ? "flex items-center gap-3 rounded-xl border border-slate-900 bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white"
-                        : "flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm font-semibold text-slate-700 hover:border-slate-200 hover:bg-slate-50"
-                    }
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
-            </nav>
-          </aside>
+                <div
+                  className={`relative inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+                    isActive ? "bg-slate-900" : "bg-transparent"
+                  }`}
+                >
+                  <Icon
+                    className={`h-4 w-4 transition-colors ${
+                      isActive ? "text-white" : "text-slate-600"
+                    }`}
+                  />
+                  {showAlertDot ? (
+                    <span className="absolute -right-1.5 -top-1.5 h-2 w-2 rounded-full bg-rose-500" />
+                  ) : null}
+                  {showUnreadBadge ? (
+                    <span className="absolute -right-2 -top-2 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  ) : null}
+                </div>
+                <span
+                  className={`text-[9px] font-semibold leading-3 transition-colors ${
+                    isActive ? "text-slate-900" : "text-slate-600"
+                  }`}
+                >
+                  <span className="block max-w-full truncate">
+                    {item.label}
+                  </span>
+                </span>
+              </Link>
+            );
+          })}
         </div>
-      ) : null}
+      </nav>
+
+      <div className="h-[calc(6rem+env(safe-area-inset-bottom))] lg:hidden" />
     </div>
   );
 }
