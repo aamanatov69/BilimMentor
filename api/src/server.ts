@@ -7,30 +7,7 @@ import { lmsRoutes } from "./routes/lmsRoutes";
 export const app = express();
 const PORT = Number(process.env.PORT ?? 4000);
 
-function resolveTrustProxySetting() {
-  const raw = process.env.TRUST_PROXY?.trim();
-  if (!raw) {
-    return 1;
-  }
-
-  if (raw === "true") {
-    return true;
-  }
-
-  if (raw === "false") {
-    return false;
-  }
-
-  const asNumber = Number(raw);
-  if (Number.isInteger(asNumber) && asNumber >= 0) {
-    return asNumber;
-  }
-
-  // Keep rate limiting accurate behind reverse proxies if env value is invalid.
-  return 1;
-}
-
-app.set("trust proxy", resolveTrustProxySetting());
+app.set("trust proxy", 1);
 
 app.disable("x-powered-by");
 
