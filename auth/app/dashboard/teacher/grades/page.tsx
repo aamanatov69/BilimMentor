@@ -358,7 +358,7 @@ export default function TeacherGradesPage() {
                       <p className="text-sm font-semibold">
                         {student.studentName}
                       </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
                         <Link
                           href={`/dashboard/teacher/assignments?submissionId=${row.submissionId}`}
                           className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
@@ -419,58 +419,60 @@ export default function TeacherGradesPage() {
                         <p className="min-w-[180px] font-semibold">
                           {student.studentName}
                         </p>
-                        <Link
-                          href={`/dashboard/teacher/assignments?submissionId=${row.submissionId}`}
-                          className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
-                        >
-                          Просмотреть
-                        </Link>
-                        <label className="text-xs text-slate-600">
-                          Оценка:
-                        </label>
-                        <input
-                          type="number"
-                          min={0}
-                          max={100}
-                          value={scoreDrafts[row.submissionId] ?? ""}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setScoreDrafts((prev) => ({
-                              ...prev,
-                              [row.submissionId]: value,
-                            }));
-                          }}
-                          onBlur={() => void saveGrade(row)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              void saveGrade(row);
-                            }
-                          }}
-                          className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
-                          placeholder="0-100"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => void saveGrade(row)}
-                          disabled={!!savingIds[row.submissionId]}
-                          className="rounded bg-blue-700 px-3 py-1 text-sm text-white hover:bg-blue-800 disabled:opacity-60"
-                        >
-                          {savingIds[row.submissionId]
-                            ? "Сохранение..."
-                            : "Оценить"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCommentModalRow(row);
-                            setCommentDraft(row.feedback ?? "");
-                            setCommentMessage("");
-                          }}
-                          className="text-sm text-blue-700 hover:underline"
-                        >
-                          Комментарий
-                        </button>
+                        <div className="ml-auto flex items-center gap-3">
+                          <Link
+                            href={`/dashboard/teacher/assignments?submissionId=${row.submissionId}`}
+                            className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                          >
+                            Просмотреть
+                          </Link>
+                          <label className="text-xs text-slate-600">
+                            Оценка:
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={scoreDrafts[row.submissionId] ?? ""}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setScoreDrafts((prev) => ({
+                                ...prev,
+                                [row.submissionId]: value,
+                              }));
+                            }}
+                            onBlur={() => void saveGrade(row)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                void saveGrade(row);
+                              }
+                            }}
+                            className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                            placeholder="0-100"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void saveGrade(row)}
+                            disabled={!!savingIds[row.submissionId]}
+                            className="rounded bg-blue-700 px-3 py-1 text-sm text-white hover:bg-blue-800 disabled:opacity-60"
+                          >
+                            {savingIds[row.submissionId]
+                              ? "Сохранение..."
+                              : "Оценить"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCommentModalRow(row);
+                              setCommentDraft(row.feedback ?? "");
+                              setCommentMessage("");
+                            }}
+                            className="text-sm text-blue-700 hover:underline"
+                          >
+                            Комментарий
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
