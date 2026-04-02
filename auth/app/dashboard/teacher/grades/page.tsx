@@ -358,9 +358,6 @@ export default function TeacherGradesPage() {
                       <p className="text-sm font-semibold">
                         {student.studentName}
                       </p>
-                      <p className="mt-1 text-sm font-medium text-slate-700">
-                        {row.assignmentTitle}
-                      </p>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <Link
                           href={`/dashboard/teacher/assignments?submissionId=${row.submissionId}`}
@@ -418,12 +415,9 @@ export default function TeacherGradesPage() {
                     </div>
 
                     <div className="hidden overflow-x-auto md:block">
-                      <div className="flex min-w-[980px] items-center gap-3 whitespace-nowrap">
+                      <div className="flex min-w-[760px] items-center gap-3 whitespace-nowrap">
                         <p className="min-w-[180px] font-semibold">
                           {student.studentName}
-                        </p>
-                        <p className="min-w-[220px] font-medium">
-                          {row.assignmentTitle}
                         </p>
                         <Link
                           href={`/dashboard/teacher/assignments?submissionId=${row.submissionId}`}
@@ -501,9 +495,6 @@ export default function TeacherGradesPage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold">Комментарий к заданию</h2>
-                <p className="text-sm text-slate-600">
-                  {commentModalRow.assignmentTitle}
-                </p>
                 <p className="text-xs text-slate-500">
                   Студент: {commentModalRow.studentName}
                 </p>
