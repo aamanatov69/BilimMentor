@@ -29,7 +29,7 @@ function levelLabel(level: CourseItem["level"]) {
 }
 
 export default function StudentCoursesPage() {
-  const [tab, setTab] = useState<"all" | "my" | "requests">("all");
+  const [tab, setTab] = useState<"all" | "my" | "requests">("my");
   const [allCourses, setAllCourses] = useState<CourseItem[]>([]);
   const [myCourses, setMyCourses] = useState<CourseItem[]>([]);
   const [requests, setRequests] = useState<AccessRequest[]>([]);
@@ -158,46 +158,6 @@ export default function StudentCoursesPage() {
 
   return (
     <main className="space-y-4">
-      <section className="dashboard-rise relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-cyan-50 via-white to-emerald-50 p-5 shadow-sm">
-        <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-cyan-300/25 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-emerald-300/25 blur-3xl" />
-        <div className="relative">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Что делать сейчас
-          </p>
-          <h1 className="mt-2 text-2xl font-bold text-slate-900">
-            Выберите курс и запросите доступ в 1 клик
-          </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Начните с каталога, затем отслеживайте статус заявки во вкладке
-            "Заявки".
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setTab("all")}
-              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-            >
-              Открыть каталог
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("requests")}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Мои заявки
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("my")}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Мои курсы
-            </button>
-          </div>
-        </div>
-      </section>
-
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <h1 className="text-2xl font-semibold text-slate-900">Курсы</h1>
         <p className="mt-1 text-sm text-slate-600">

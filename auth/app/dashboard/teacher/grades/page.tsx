@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -25,13 +25,13 @@ export default function TeacherGradesPage() {
 
   const [gradeRows, setGradeRows] = useState<GradeRow[]>([]);
   const [error, setError] = useState("");
+  const [saveNotice, setSaveNotice] = useState("");
   const [scoreDrafts, setScoreDrafts] = useState<Record<string, string>>({});
   const [savingIds, setSavingIds] = useState<Record<string, boolean>>({});
-  const [savedIds, setSavedIds] = useState<Record<string, boolean>>({});
-  const [modalStudentId, setModalStudentId] = useState<string | null>(null);
-  const [modalGradeFilter, setModalGradeFilter] = useState<
-    "ungraded" | "graded"
-  >("ungraded");
+  const saveNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [gradeFilter, setGradeFilter] = useState<"ungraded" | "graded">(
+    "ungraded",
+  );
   const [commentModalRow, setCommentModalRow] = useState<GradeRow | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
   const [commentSaving, setCommentSaving] = useState(false);
@@ -98,7 +98,6 @@ export default function TeacherGradesPage() {
     }
 
     setError("");
-    setSavedIds((prev) => ({ ...prev, [row.submissionId]: false }));
     setSavingIds((prev) => ({ ...prev, [row.submissionId]: true }));
 
     try {
@@ -148,7 +147,13 @@ export default function TeacherGradesPage() {
         ...prev,
         [row.submissionId]: String(score),
       }));
-      setSavedIds((prev) => ({ ...prev, [row.submissionId]: true }));
+      setSaveNotice("Сохранено");
+      if (saveNoticeTimerRef.current) {
+        clearTimeout(saveNoticeTimerRef.current);
+      }
+      saveNoticeTimerRef.current = setTimeout(() => {
+        setSaveNotice("");
+      }, 1700);
       window.dispatchEvent(new Event("teacher-grades-updated"));
     } catch {
       setError("Ошибка сети");
@@ -235,31 +240,13 @@ export default function TeacherGradesPage() {
     );
   }, [gradeRows]);
 
-  const modalStudent = useMemo(() => {
-    if (!modalStudentId) {
-      return null;
-    }
+  const isRowGraded = (row: GradeRow) =>
+    row.score !== null && typeof row.score !== "undefined";
 
-    return (
-      groupedByStudent.find((item) => item.studentId === modalStudentId) ?? null
+  const filterRowsByGrade = (rows: GradeRow[]) =>
+    rows.filter((row) =>
+      gradeFilter === "graded" ? isRowGraded(row) : !isRowGraded(row),
     );
-  }, [groupedByStudent, modalStudentId]);
-
-  const modalFilteredRows = useMemo(() => {
-    if (!modalStudent) {
-      return [];
-    }
-
-    if (modalGradeFilter === "graded") {
-      return modalStudent.rows.filter(
-        (row) => row.score !== null && typeof row.score !== "undefined",
-      );
-    }
-
-    return modalStudent.rows.filter(
-      (row) => row.score === null || typeof row.score === "undefined",
-    );
-  }, [modalStudent, modalGradeFilter]);
 
   useEffect(() => {
     if (!targetSubmissionId || gradeRows.length === 0) {
@@ -273,15 +260,16 @@ export default function TeacherGradesPage() {
     if (!targetRow) {
       return;
     }
-
-    setModalStudentId(targetRow.studentId);
   }, [targetSubmissionId, gradeRows]);
 
-  useEffect(() => {
-    if (modalStudentId) {
-      setModalGradeFilter("ungraded");
-    }
-  }, [modalStudentId]);
+  useEffect(
+    () => () => {
+      if (saveNoticeTimerRef.current) {
+        clearTimeout(saveNoticeTimerRef.current);
+      }
+    },
+    [],
+  );
 
   return (
     <main className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
@@ -298,26 +286,51 @@ export default function TeacherGradesPage() {
       </div>
 
       <section className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-        <h2 className="text-sm font-semibold text-slate-800">
-          Список студентов
-        </h2>
-        {groupedByStudent.length ? (
-          <div className="mt-2 flex flex-wrap gap-2">
-            {groupedByStudent.map((item) => (
-              <span
-                key={item.studentId}
-                className="rounded-full bg-white px-2.5 py-1 text-xs text-slate-700"
-              >
-                {item.studentName}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-2 text-sm text-slate-600">
-            Студенты пока не отображаются: нет сдач для оценивания.
-          </p>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setGradeFilter("ungraded")}
+            className={
+              gradeFilter === "ungraded"
+                ? "rounded-full border border-amber-700 bg-amber-700 px-3 py-1.5 text-xs font-medium text-white"
+                : "rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            }
+          >
+            Не выставленные (
+            {
+              gradeRows.filter(
+                (row) => row.score === null || typeof row.score === "undefined",
+              ).length
+            }
+            )
+          </button>
+          <button
+            type="button"
+            onClick={() => setGradeFilter("graded")}
+            className={
+              gradeFilter === "graded"
+                ? "rounded-full border border-emerald-700 bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white"
+                : "rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            }
+          >
+            Выставленные (
+            {
+              gradeRows.filter(
+                (row) => row.score !== null && typeof row.score !== "undefined",
+              ).length
+            }
+            )
+          </button>
+        </div>
       </section>
+
+      {saveNotice ? (
+        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[70] flex justify-center px-4">
+          <p className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 shadow">
+            {saveNotice}
+          </p>
+        </div>
+      ) : null}
 
       {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
 
@@ -330,103 +343,8 @@ export default function TeacherGradesPage() {
               key={student.studentId}
               className="rounded-xl border border-slate-200 bg-white p-4"
             >
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-                <div>
-                  <h2 className="font-semibold">{student.studentName}</h2>
-                  {student.studentEmail ? (
-                    <p className="text-xs text-slate-500">
-                      {student.studentEmail}
-                    </p>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setModalStudentId(student.studentId)}
-                  className="justify-self-start rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50 sm:justify-self-center"
-                >
-                  Задания
-                </button>
-                <p className="text-xs text-slate-500 sm:justify-self-end">
-                  Заданий: {student.rows.length}
-                </p>
-              </div>
-            </article>
-          ))
-        )}
-      </div>
-
-      {modalStudent ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-6">
-          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white p-4 shadow-xl sm:p-6">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">Задания студента</h2>
-                <p className="text-sm text-slate-600">
-                  {modalStudent.studentName}
-                </p>
-                {modalStudent.studentEmail ? (
-                  <p className="text-xs text-slate-500">
-                    {modalStudent.studentEmail}
-                  </p>
-                ) : null}
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalStudentId(null)}
-                className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
-              >
-                Закрыть
-              </button>
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setModalGradeFilter("ungraded")}
-                className={
-                  modalGradeFilter === "ungraded"
-                    ? "rounded-full border border-amber-700 bg-amber-700 px-3 py-1.5 text-xs font-medium text-white"
-                    : "rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                }
-              >
-                Не выставленные (
-                {
-                  modalStudent.rows.filter(
-                    (row) =>
-                      row.score === null || typeof row.score === "undefined",
-                  ).length
-                }
-                )
-              </button>
-              <button
-                type="button"
-                onClick={() => setModalGradeFilter("graded")}
-                className={
-                  modalGradeFilter === "graded"
-                    ? "rounded-full border border-emerald-700 bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white"
-                    : "rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                }
-              >
-                Выставленные (
-                {
-                  modalStudent.rows.filter(
-                    (row) =>
-                      row.score !== null && typeof row.score !== "undefined",
-                  ).length
-                }
-                )
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {modalFilteredRows.length === 0 ? (
-                <p className="text-sm text-slate-600">
-                  {modalGradeFilter === "graded"
-                    ? "Нет заданий с выставленной оценкой."
-                    : "Нет заданий без выставленной оценки."}
-                </p>
-              ) : (
-                modalFilteredRows.map((row, index) => (
+              <div className="space-y-3">
+                {filterRowsByGrade(student.rows).map((row) => (
                   <div
                     id={`submission-${row.submissionId}`}
                     key={row.submissionId}
@@ -436,83 +354,146 @@ export default function TeacherGradesPage() {
                         : "rounded border border-slate-200 p-3"
                     }
                   >
-                    <p className="text-xs font-semibold text-slate-500">
-                      Пункт {index + 1}
-                    </p>
-                    <p className="font-medium">{row.assignmentTitle}</p>
-                    <p className="text-xs text-slate-500">
-                      Курс: {row.courseTitle}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {new Date(row.submittedAt).toLocaleString()}
-                    </p>
-
-                    <div className="mt-2 grid gap-2 sm:flex sm:flex-wrap sm:items-center">
-                      <label className="text-xs text-slate-600">Оценка:</label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={scoreDrafts[row.submissionId] ?? ""}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setScoreDrafts((prev) => ({
-                            ...prev,
-                            [row.submissionId]: value,
-                          }));
-                          setSavedIds((prev) => ({
-                            ...prev,
-                            [row.submissionId]: false,
-                          }));
-                        }}
-                        onBlur={() => void saveGrade(row)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            void saveGrade(row);
-                          }
-                        }}
-                        className="w-full rounded border border-slate-300 px-2 py-1 text-sm sm:w-24"
-                        placeholder="0-100"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void saveGrade(row)}
-                        disabled={!!savingIds[row.submissionId]}
-                        className="rounded bg-blue-700 px-3 py-1 text-sm text-white hover:bg-blue-800 disabled:opacity-60 sm:w-auto"
-                      >
-                        {savingIds[row.submissionId]
-                          ? "Сохранение..."
-                          : "Оценить"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCommentModalRow(row);
-                          setCommentDraft(row.feedback ?? "");
-                          setCommentMessage("");
-                        }}
-                        className="text-sm text-blue-700 hover:underline"
-                      >
-                        Комментарий
-                      </button>
-                      {savedIds[row.submissionId] ? (
-                        <span className="text-xs text-emerald-700">
-                          Сохранено
-                        </span>
-                      ) : null}
+                    <div className="md:hidden">
+                      <p className="text-sm font-semibold">
+                        {student.studentName}
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-slate-700">
+                        {row.assignmentTitle}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/dashboard/teacher/assignments?submissionId=${row.submissionId}`}
+                          className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                        >
+                          Просмотреть
+                        </Link>
+                        <label className="text-xs text-slate-600">
+                          Оценка:
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={scoreDrafts[row.submissionId] ?? ""}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setScoreDrafts((prev) => ({
+                              ...prev,
+                              [row.submissionId]: value,
+                            }));
+                          }}
+                          onBlur={() => void saveGrade(row)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void saveGrade(row);
+                            }
+                          }}
+                          className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                          placeholder="0-100"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void saveGrade(row)}
+                          disabled={!!savingIds[row.submissionId]}
+                          className="rounded bg-blue-700 px-3 py-1 text-sm text-white hover:bg-blue-800 disabled:opacity-60"
+                        >
+                          {savingIds[row.submissionId]
+                            ? "Сохранение..."
+                            : "Оценить"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCommentModalRow(row);
+                            setCommentDraft(row.feedback ?? "");
+                            setCommentMessage("");
+                          }}
+                          className="text-sm text-blue-700 hover:underline"
+                        >
+                          Комментарий
+                        </button>
+                      </div>
                     </div>
 
-                    <p className="mt-1 text-xs text-slate-600">
-                      Текущий комментарий: {row.feedback ?? "-"}
-                    </p>
+                    <div className="hidden overflow-x-auto md:block">
+                      <div className="flex min-w-[980px] items-center gap-3 whitespace-nowrap">
+                        <p className="min-w-[180px] font-semibold">
+                          {student.studentName}
+                        </p>
+                        <p className="min-w-[220px] font-medium">
+                          {row.assignmentTitle}
+                        </p>
+                        <Link
+                          href={`/dashboard/teacher/assignments?submissionId=${row.submissionId}`}
+                          className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                        >
+                          Просмотреть
+                        </Link>
+                        <label className="text-xs text-slate-600">
+                          Оценка:
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={scoreDrafts[row.submissionId] ?? ""}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setScoreDrafts((prev) => ({
+                              ...prev,
+                              [row.submissionId]: value,
+                            }));
+                          }}
+                          onBlur={() => void saveGrade(row)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void saveGrade(row);
+                            }
+                          }}
+                          className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                          placeholder="0-100"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void saveGrade(row)}
+                          disabled={!!savingIds[row.submissionId]}
+                          className="rounded bg-blue-700 px-3 py-1 text-sm text-white hover:bg-blue-800 disabled:opacity-60"
+                        >
+                          {savingIds[row.submissionId]
+                            ? "Сохранение..."
+                            : "Оценить"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCommentModalRow(row);
+                            setCommentDraft(row.feedback ?? "");
+                            setCommentMessage("");
+                          }}
+                          className="text-sm text-blue-700 hover:underline"
+                        >
+                          Комментарий
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
+                ))}
+
+                {filterRowsByGrade(student.rows).length === 0 ? (
+                  <p className="text-sm text-slate-600">
+                    {gradeFilter === "graded"
+                      ? "Нет заданий с выставленной оценкой."
+                      : "Нет заданий без выставленной оценки."}
+                  </p>
+                ) : null}
+              </div>
+            </article>
+          ))
+        )}
+      </div>
 
       {commentModalRow ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-3 sm:p-6">

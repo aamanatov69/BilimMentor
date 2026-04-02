@@ -1,9 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { renderFormulaAsMathTypeHtml } from "@/lib/math-render";
+import {
+  renderFormulaAsMathTypeHtml,
+  renderTextWithMathTypeTokensHtml,
+} from "@/lib/math-render";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -57,6 +61,8 @@ function base64ToBlob(base64Raw: string, mimeType: string) {
 }
 
 export default function TeacherAssignmentsPage() {
+  const searchParams = useSearchParams();
+  const targetSubmissionId = searchParams.get("submissionId") ?? "";
   const [activeTab, setActiveTab] = useState<"unviewed" | "viewed">("unviewed");
   const [rows, setRows] = useState<AssignmentAnswerRow[]>([]);
   const [previewRow, setPreviewRow] = useState<AssignmentAnswerRow | null>(
@@ -207,47 +213,25 @@ export default function TeacherAssignmentsPage() {
 
   const filteredRows = activeTab === "viewed" ? viewedRows : unviewedRows;
 
-  const firstUnviewed = unviewedRows[0] ?? null;
+  useEffect(() => {
+    if (!targetSubmissionId || rows.length === 0) {
+      return;
+    }
+
+    const targetRow = rows.find(
+      (item) => item.submissionId === targetSubmissionId,
+    );
+
+    if (!targetRow) {
+      return;
+    }
+
+    setActiveTab(isViewed(targetRow) ? "viewed" : "unviewed");
+    setPreviewRow(targetRow);
+  }, [targetSubmissionId, rows]);
 
   return (
     <main className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-      <section className="dashboard-rise relative mb-4 overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-amber-50 via-white to-cyan-50 p-4 sm:p-5">
-        <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-amber-300/25 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-cyan-300/25 blur-3xl" />
-        <div className="relative">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Что делать сейчас
-          </p>
-          <h2 className="mt-2 text-xl font-bold text-slate-900 sm:text-2xl">
-            Проверьте новые ответы студентов в первую очередь
-          </h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Сначала откройте не просмотренные, затем выставьте оценку и
-            комментарий.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab("unviewed");
-                if (firstUnviewed) {
-                  setPreviewRow(firstUnviewed);
-                }
-              }}
-              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-            >
-              Открыть новый ответ ({unviewedRows.length})
-            </button>
-            <Link
-              href="/dashboard/teacher/grades"
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Перейти к оцениванию
-            </Link>
-          </div>
-        </div>
-      </section>
-
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold sm:text-2xl">Задания</h1>
         <Link
@@ -391,9 +375,14 @@ export default function TeacherAssignmentsPage() {
                 <p className="text-xs font-semibold text-slate-500">
                   Текст ответа
                 </p>
-                <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">
-                  {previewRow.answerText}
-                </p>
+                <div
+                  className="mt-1 overflow-x-auto break-words text-sm text-slate-700"
+                  dangerouslySetInnerHTML={{
+                    __html: renderTextWithMathTypeTokensHtml(
+                      previewRow.answerText,
+                    ),
+                  }}
+                />
               </div>
             ) : null}
 

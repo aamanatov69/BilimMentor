@@ -83,8 +83,6 @@ export default function StudentDashboardPage() {
     void loadData();
   }, []);
 
-  const continueCourse = overview?.currentCourses?.[0] ?? null;
-
   const courseRows = useMemo(() => {
     const rows = overview?.currentCourses ?? [];
     if (courseFilter === "completed") {
@@ -106,130 +104,13 @@ export default function StudentDashboardPage() {
     Math.min(100, ((overview?.summary.gpa ?? 0) / 4) * 100),
   );
 
-  const nextAssignment = dueSoonRows[0] ?? null;
-
   return (
     <main className="space-y-6">
-      <section className="dashboard-rise relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-cyan-50 via-white to-emerald-50 p-5 shadow-sm">
-        <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-cyan-300/25 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-emerald-300/25 blur-3xl" />
-
-        <div className="relative">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            План на сегодня
-          </p>
-          <h1 className="mt-2 text-2xl font-bold text-slate-900">
-            Продолжить обучение с понятного следующего шага
-          </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Сначала откройте текущий курс, затем закройте ближайший дедлайн.
-          </p>
-
-          {loading ? (
-            <div className="mt-4 animate-pulse rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="h-5 w-52 rounded bg-slate-200" />
-              <div className="mt-3 h-2 w-full rounded bg-slate-200" />
-              <div className="mt-4 h-10 w-40 rounded bg-slate-200" />
-            </div>
-          ) : continueCourse ? (
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-white/85 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Шаг 1
-                  </p>
-                  <p className="text-lg font-semibold text-slate-900">
-                    {continueCourse.name}
-                  </p>
-                  <p className="text-sm text-slate-600">
-                    Преподаватель: {continueCourse.teacher}
-                  </p>
-                </div>
-                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
-                  Прогресс {continueCourse.progress}%
-                </span>
-              </div>
-
-              <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-200">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-sky-500 to-emerald-500"
-                  style={{
-                    width: `${Math.max(0, Math.min(100, continueCourse.progress))}%`,
-                  }}
-                />
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Link
-                  href={`/dashboard/student/courses/${continueCourse.id}`}
-                  className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-                >
-                  Продолжить курс
-                </Link>
-                <Link
-                  href="/dashboard/student/assignments"
-                  className="inline-flex rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  Открыть задания
-                </Link>
-              </div>
-
-              {nextAssignment ? (
-                <p className="mt-3 text-xs text-slate-600">
-                  Шаг 2: сдайте ближайшую работу - {nextAssignment.title}
-                </p>
-              ) : null}
-            </div>
-          ) : (
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm text-slate-600">
-                Пока нет активного курса для продолжения.
-              </p>
-              <Link
-                href="/dashboard/student/courses"
-                className="mt-3 inline-flex rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Открыть каталог
-              </Link>
-            </div>
-          )}
-        </div>
-      </section>
-
       {error ? (
         <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
         </p>
       ) : null}
-
-      <section className="dashboard-rise rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">
-          Быстрый старт студента
-        </h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Пройдите эти шаги, чтобы сразу видеть прогресс и оценки.
-        </p>
-        <div className="mt-4 grid gap-2 md:grid-cols-3">
-          <Link
-            href="/dashboard/student/courses"
-            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-800 hover:bg-white"
-          >
-            1. Выбрать курс
-          </Link>
-          <Link
-            href="/dashboard/student/assignments"
-            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-800 hover:bg-white"
-          >
-            2. Сдать первое задание
-          </Link>
-          <Link
-            href="/dashboard/student/grades"
-            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-800 hover:bg-white"
-          >
-            3. Проверить оценку
-          </Link>
-        </div>
-      </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
         <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">

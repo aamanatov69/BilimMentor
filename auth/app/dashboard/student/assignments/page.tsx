@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { createElement, useEffect, useMemo, useRef, useState } from "react";
 
 import { renderFormulaAsMathTypeHtml } from "@/lib/math-render";
@@ -174,8 +173,6 @@ export default function StudentAssignmentsPage() {
     () => rows.filter((item) => !item.submission && isOverdue(item.dueAt)),
     [rows],
   );
-
-  const nextPending = pendingRows[0] ?? null;
 
   const handleSelectFiles = async (
     assignmentId: string,
@@ -456,53 +453,11 @@ export default function StudentAssignmentsPage() {
 
   return (
     <main className="space-y-4">
-      <section className="dashboard-rise relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-cyan-50 via-white to-emerald-50 p-5 shadow-sm">
-        <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-cyan-300/25 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-16 left-1/3 h-40 w-40 rounded-full bg-emerald-300/25 blur-3xl" />
-        <div className="relative">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Что делать сейчас
-          </p>
-          <h1 className="mt-2 text-2xl font-bold text-slate-900">
-            Сдайте ближайшее доступное задание
-          </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Сначала отправьте новое задание, потом проверьте уже сданные и
-            комментарии преподавателя.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {nextPending ? (
-              <button
-                type="button"
-                onClick={() => setActiveCardId(nextPending.id)}
-                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-              >
-                Открыть ближайшее задание
-              </button>
-            ) : null}
-            <Link
-              href="/dashboard/student/grades"
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Смотреть оценки
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h1 className="text-2xl font-semibold text-slate-900">
-          Задания (Kanban)
-        </h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Статусы: доступные, сданы, просроченные.
+      {error ? (
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {error}
         </p>
-        {error ? (
-          <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            {error}
-          </p>
-        ) : null}
-      </section>
+      ) : null}
 
       {loading ? (
         <section className="grid gap-4 xl:grid-cols-3">

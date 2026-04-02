@@ -706,7 +706,7 @@ export default function NewTeacherCoursePage() {
   const toast = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [step, setStep] = useState<"course" | "lesson" | "preview">("course");
+  const [step, setStep] = useState<"course" | "lesson">("course");
   const editingCourseId = useMemo(
     () => searchParams.get("courseId")?.trim() ?? "",
     [searchParams],
@@ -717,6 +717,10 @@ export default function NewTeacherCoursePage() {
   );
   const requestedStep = useMemo(
     () => searchParams.get("step")?.trim() ?? "",
+    [searchParams],
+  );
+  const requestedReset = useMemo(
+    () => searchParams.get("reset") === "1",
     [searchParams],
   );
   const isEditMode = Boolean(editingCourseId);
@@ -939,6 +943,32 @@ export default function NewTeacherCoursePage() {
       return;
     }
 
+    if (requestedReset) {
+      window.localStorage.removeItem(draftStorageKey);
+      setStep("course");
+      setCourseTitle("");
+      setCourseDescription("");
+      setCourseLevel("beginner");
+      setLessonTitle("");
+      setLessonLecture("");
+      setMathTypeFormulaFields([]);
+      setMathFormulaFields([]);
+      setChemistryFormulaFields([]);
+      setCodeFields([]);
+      setLessonLinks([]);
+      setLessonFiles([]);
+      setAssignmentText("");
+      setAssignmentDueAt("");
+      setShowLinks(false);
+      setShowMaterials(false);
+      setShowAssignmentInput(false);
+      setTargetLessonId("");
+      setExistingLessons([]);
+      setLastSavedAt("");
+      setAutosaveState("idle");
+      return;
+    }
+
     const rawDraft = window.localStorage.getItem(draftStorageKey);
     if (!rawDraft) {
       return;
@@ -991,14 +1021,14 @@ export default function NewTeacherCoursePage() {
       setShowMaterials(Boolean(draft.showMaterials));
       setShowAssignmentInput(Boolean(draft.showAssignmentInput));
       if (draft.step) {
-        setStep(draft.step);
+        setStep(draft.step === "preview" ? "lesson" : draft.step);
       }
       setLastSavedAt(draft.lastSavedAt ?? "");
       setAutosaveState("saved");
     } catch {
       window.localStorage.removeItem(draftStorageKey);
     }
-  }, [draftStorageKey, isEditMode]);
+  }, [draftStorageKey, isEditMode, requestedReset]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -1728,7 +1758,7 @@ export default function NewTeacherCoursePage() {
       } else {
         window.localStorage.removeItem(draftStorageKey);
         toast.success("Курс и урок созданы");
-        router.push("/dashboard/teacher/courses?created=1");
+        router.push("/dashboard/teacher");
       }
     } catch (submitError) {
       toast.error(
@@ -1786,15 +1816,7 @@ export default function NewTeacherCoursePage() {
             >
               Шаг 2: Урок
             </span>
-            <span
-              className={
-                step === "preview"
-                  ? "rounded-full bg-slate-900 px-2.5 py-1 text-white"
-                  : "rounded-full bg-white px-2.5 py-1"
-              }
-            >
-              Шаг 3: Preview
-            </span>
+            <span className="hidden" />
             <span className="ml-auto rounded-full border border-slate-200 bg-white px-2.5 py-1 normal-case tracking-normal text-slate-600">
               {autosaveState === "saving"
                 ? "Автосохранение..."
@@ -2680,14 +2702,6 @@ export default function NewTeacherCoursePage() {
               </button>
 
               <button
-                type="button"
-                onClick={() => setStep("preview")}
-                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-              >
-                Дальше к preview
-              </button>
-
-              <button
                 type="submit"
                 disabled={isSaving}
                 className="inline-flex items-center gap-2 rounded-lg border border-blue-400 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
@@ -2701,92 +2715,6 @@ export default function NewTeacherCoursePage() {
               </button>
             </div>
           </form>
-        ) : null}
-
-        {!isLoadingInitial && step === "preview" ? (
-          <section className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-6">
-            <div>
-              <p className="text-sm text-slate-600">Шаг 3 из 3</p>
-              <h2 className="mt-1 text-lg font-semibold text-slate-900">
-                Предпросмотр перед сохранением
-              </h2>
-            </div>
-
-            <article className="rounded-xl border border-slate-200 bg-white p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Курс
-              </p>
-              <p className="mt-2 text-base font-semibold text-slate-900">
-                {courseTitle || "Без названия"}
-              </p>
-              <p className="mt-1 text-sm text-slate-600">
-                {courseDescription || "Описание не задано"}
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                Уровень: {getCourseLevelLabel(courseLevel)}
-              </p>
-            </article>
-
-            <article className="rounded-xl border border-slate-200 bg-white p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Урок
-              </p>
-              <p className="mt-2 text-base font-semibold text-slate-900">
-                {lessonTitle || "Без названия"}
-              </p>
-              {lessonLecture ? (
-                <div
-                  className="mt-1 overflow-x-auto break-words text-sm text-slate-600"
-                  dangerouslySetInnerHTML={{
-                    __html: renderInlineMathInText(lessonLecture),
-                  }}
-                />
-              ) : (
-                <p className="mt-1 text-sm text-slate-600">
-                  Основной текст не заполнен
-                </p>
-              )}
-              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                  MathType:{" "}
-                  {mathTypeFormulaFields.filter((item) => item.trim()).length}
-                </p>
-                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                  Матем. формулы:{" "}
-                  {mathFormulaFields.filter((item) => item.trim()).length}
-                </p>
-                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                  Хим. формулы:{" "}
-                  {chemistryFormulaFields.filter((item) => item.trim()).length}
-                </p>
-                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                  Код-блоки: {codeFields.filter((item) => item.trim()).length}
-                </p>
-                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                  Файлы: {lessonFiles.length}
-                </p>
-              </div>
-            </article>
-
-            <div className="flex flex-wrap justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => setStep("lesson")}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
-              >
-                Назад к редактированию
-              </button>
-              <button
-                type="button"
-                onClick={() => void saveWizard()}
-                disabled={isSaving}
-                className="inline-flex items-center gap-2 rounded-lg border border-blue-400 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
-              >
-                <Save className="h-4 w-4" />
-                {isSaving ? "Сохранение..." : "Сохранить курс и урок"}
-              </button>
-            </div>
-          </section>
         ) : null}
       </div>
     </main>

@@ -570,16 +570,15 @@ export default function TeacherCoursesPage() {
           {viewCourseId ? "Уроки" : "Курсы"}
         </h1>
         {viewCourseId ? (
-          <button
-            type="button"
-            onClick={closeViewModal}
+          <Link
+            href="/dashboard/teacher"
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-400 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:w-auto"
           >
             Назад к курсам
-          </button>
+          </Link>
         ) : (
           <Link
-            href="/dashboard/teacher/courses/new"
+            href="/dashboard/teacher/courses/new?reset=1"
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-400 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:w-auto"
           >
             <Plus className="h-4 w-4" />

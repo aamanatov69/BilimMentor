@@ -47,6 +47,9 @@ export default function TeacherStudentsPage() {
   const [students, setStudents] = useState<CourseStudentCard[]>([]);
   const [error, setError] = useState("");
   const [busyRequestId, setBusyRequestId] = useState("");
+  const [mobileDataOpenById, setMobileDataOpenById] = useState<
+    Record<string, boolean>
+  >({});
 
   const loadStudents = async () => {
     setError("");
@@ -233,24 +236,62 @@ export default function TeacherStudentsPage() {
               {students.map((student) => (
                 <article
                   key={`mobile-${student.id}`}
-                  className="rounded-lg border border-slate-200 p-3"
+                  className="rounded-xl border border-slate-200 bg-slate-50/60 p-4"
                 >
-                  <p className="break-words font-medium text-slate-900">
-                    {student.fullName}
-                  </p>
-                  {student.email ? (
-                    <p className="mt-0.5 break-all text-xs text-slate-500">
-                      {student.email}
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="break-words text-sm font-semibold text-slate-900">
+                      {student.fullName}
                     </p>
-                  ) : null}
-                  <p className="mt-0.5 text-xs text-slate-600">
-                    {student.phone || "Телефон не указан"}
-                  </p>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {student.status === "pending" ? (
+                        <span className="rounded-md bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800">
+                          Ожидает
+                        </span>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileDataOpenById((prev) => ({
+                            ...prev,
+                            [student.id]: !prev[student.id],
+                          }));
+                        }}
+                        className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                      >
+                        {mobileDataOpenById[student.id] ? "Скрыть" : "Данные"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    {mobileDataOpenById[student.id] ? (
+                      <div className="mt-2 space-y-2 text-xs text-slate-700">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                            Почта
+                          </p>
+                          <p className="break-all">
+                            {student.email || "Не указана"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                            Телефон
+                          </p>
+                          <p>{student.phone || "Телефон не указан"}</p>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
 
                   <div className="mt-3">
                     {student.status === "pending" ? (
                       <>
-                        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <p className="mb-2 rounded-md bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800">
+                          Запрос:{" "}
+                          {student.requestCourseTitle ?? student.courseId}
+                        </p>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                           <button
                             type="button"
                             className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
@@ -281,11 +322,7 @@ export default function TeacherStudentsPage() {
                           </button>
                         </div>
                       </>
-                    ) : (
-                      <span className="inline-block rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
-                        Доступ одобрен
-                      </span>
-                    )}
+                    ) : null}
                   </div>
                 </article>
               ))}

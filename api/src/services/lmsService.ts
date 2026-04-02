@@ -3318,6 +3318,8 @@ export async function teacherDashboardOverview(userId: string | undefined) {
       title: true,
       category: true,
       progress: true,
+      isPublished: true,
+      createdAt: true,
       modules: true,
       updatedAt: true,
       _count: {
@@ -3366,6 +3368,9 @@ export async function teacherDashboardOverview(userId: string | undefined) {
       title: item.title,
       category: item.category,
       progress: item.progress,
+      isPublished: item.isPublished,
+      createdAt: item.createdAt.toISOString(),
+      modules: item.modules,
       studentsCount: item._count.enrollments,
     })),
   };
