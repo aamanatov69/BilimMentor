@@ -376,6 +376,14 @@ export const lmsController = {
     res.json(result);
   },
 
+  teacherCompleteCourse: async (req: AuthenticatedRequest, res: Response) => {
+    const result = await lmsService.teacherCompleteCourse(
+      req.user?.sub,
+      String(req.params.id),
+    );
+    res.json(result);
+  },
+
   teacherUpdateCourse: async (req: AuthenticatedRequest, res: Response) => {
     const result = await lmsService.teacherUpdateCourse(
       req.user?.sub,

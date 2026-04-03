@@ -18,6 +18,7 @@ type StudentOverview = {
     teacher: string;
     status: string;
     progress: number;
+    completedByTeacher?: boolean;
   }[];
   assignments: {
     id: string;
@@ -86,9 +87,9 @@ export default function StudentDashboardPage() {
   const courseRows = useMemo(() => {
     const rows = overview?.currentCourses ?? [];
     if (courseFilter === "completed") {
-      return rows.filter((item) => item.progress >= 100);
+      return rows.filter((item) => item.status === "Enabled");
     }
-    return rows.filter((item) => item.progress < 100);
+    return rows.filter((item) => item.status !== "Enabled");
   }, [overview?.currentCourses, courseFilter]);
 
   const dueSoonRows = useMemo(() => {
@@ -155,6 +156,11 @@ export default function StudentDashboardPage() {
                   <p className="mt-1 text-xs text-slate-600">
                     {course.teacher}
                   </p>
+                  {course.completedByTeacher ? (
+                    <p className="mt-1 text-xs font-semibold text-amber-700">
+                      Курс завершен преподавателем
+                    </p>
+                  ) : null}
                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
                     <div
                       className="h-full rounded-full bg-slate-900"
@@ -163,6 +169,9 @@ export default function StudentDashboardPage() {
                       }}
                     />
                   </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Пройдено: {Math.max(0, Math.min(100, course.progress))}%
+                  </p>
                   <Link
                     href={`/dashboard/student/courses/${course.id}`}
                     className="mt-3 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"

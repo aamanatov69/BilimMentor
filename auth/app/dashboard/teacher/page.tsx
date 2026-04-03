@@ -4,12 +4,19 @@ import { ConfirmModal } from "@/components/ui/confirm-modal";
 import {
   BookOpen,
   ClipboardCheck,
+  Copy,
+  Download,
+  MessageCircle,
+  QrCode,
+  Send,
   Share2,
   Star,
   Trash2,
   Users,
+  X,
 } from "lucide-react";
 import Link from "next/link";
+import QRCode from "qrcode";
 import { useEffect, useMemo, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -48,8 +55,29 @@ export default function TeacherDashboardPage() {
   const [deleteCourseId, setDeleteCourseId] = useState("");
   const [deleteCourseTitle, setDeleteCourseTitle] = useState("");
   const [isDeletingCourse, setIsDeletingCourse] = useState(false);
+  const [endCourseId, setEndCourseId] = useState("");
+  const [endCourseTitle, setEndCourseTitle] = useState("");
+  const [isEndingCourse, setIsEndingCourse] = useState(false);
   const [shareCourseId, setShareCourseId] = useState("");
+  const [shareCourseTitle, setShareCourseTitle] = useState("");
+  const [shareLink, setShareLink] = useState("");
+  const [shareInviteExpiresAt, setShareInviteExpiresAt] = useState("");
+  const [isShareLoading, setIsShareLoading] = useState(false);
+  const [shareError, setShareError] = useState("");
+  const [isShareCopied, setIsShareCopied] = useState(false);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
+  const [isQrGenerating, setIsQrGenerating] = useState(false);
   const [info, setInfo] = useState("");
+
+  const shareText = shareCourseTitle
+    ? `Присоединяйтесь к курсу \"${shareCourseTitle}\" в BilimMentor`
+    : "Присоединяйтесь к курсу в BilimMentor";
+  const whatsappShareUrl = shareLink
+    ? `https://wa.me/?text=${encodeURIComponent(`${shareText}\n${shareLink}`)}`
+    : "#";
+  const telegramShareUrl = shareLink
+    ? `https://t.me/share/url?url=${encodeURIComponent(shareLink)}&text=${encodeURIComponent(shareText)}`
+    : "#";
 
   useEffect(() => {
     const loadData = async () => {
@@ -86,6 +114,48 @@ export default function TeacherDashboardPage() {
 
     void loadData();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const generateQrCode = async () => {
+      if (!shareLink) {
+        setQrCodeDataUrl("");
+        setIsQrGenerating(false);
+        return;
+      }
+
+      setIsQrGenerating(true);
+      try {
+        const dataUrl = await QRCode.toDataURL(shareLink, {
+          width: 320,
+          margin: 1,
+          color: {
+            dark: "#0f172a",
+            light: "#ffffff",
+          },
+        });
+        if (!cancelled) {
+          setQrCodeDataUrl(dataUrl);
+        }
+      } catch {
+        if (!cancelled) {
+          setQrCodeDataUrl("");
+          setShareError("Не удалось сгенерировать QR-код");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsQrGenerating(false);
+        }
+      }
+    };
+
+    void generateQrCode();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shareLink]);
 
   const cards = useMemo(
     () => [
@@ -249,6 +319,22 @@ export default function TeacherDashboardPage() {
     setDeleteCourseTitle("");
   };
 
+  const openEndCourseModal = (courseId: string, courseTitle: string) => {
+    setEndCourseId(courseId);
+    setEndCourseTitle(courseTitle);
+    setError("");
+    setInfo("");
+  };
+
+  const closeEndCourseModal = () => {
+    if (isEndingCourse) {
+      return;
+    }
+
+    setEndCourseId("");
+    setEndCourseTitle("");
+  };
+
   const deleteCourse = async () => {
     if (!deleteCourseId) {
       return;
@@ -303,8 +389,30 @@ export default function TeacherDashboardPage() {
     }
   };
 
-  const shareCourseInvite = async (courseId: string, courseTitle: string) => {
+  const closeShareModal = () => {
+    if (isShareLoading) {
+      return;
+    }
+
+    setShareCourseId("");
+    setShareCourseTitle("");
+    setShareLink("");
+    setShareInviteExpiresAt("");
+    setShareError("");
+    setIsShareCopied(false);
+    setQrCodeDataUrl("");
+    setIsQrGenerating(false);
+  };
+
+  const openShareModal = async (courseId: string, courseTitle: string) => {
     setShareCourseId(courseId);
+    setShareCourseTitle(courseTitle);
+    setShareLink("");
+    setShareInviteExpiresAt("");
+    setShareError("");
+    setIsShareCopied(false);
+    setQrCodeDataUrl("");
+    setIsShareLoading(true);
     setError("");
     setInfo("");
 
@@ -318,27 +426,100 @@ export default function TeacherDashboardPage() {
 
       const data = (await response.json()) as {
         inviteToken?: string;
+        expiresAt?: string | null;
         message?: string;
       };
 
       if (!response.ok || !data.inviteToken) {
-        setError(data.message ?? "Не удалось создать ссылку для курса");
+        setShareError(data.message ?? "Не удалось создать ссылку для курса");
         return;
       }
 
       const appBase = window.location.origin.replace(/\/$/, "");
       const registerUrl = `${appBase}/register?courseInvite=${encodeURIComponent(data.inviteToken)}`;
 
-      try {
-        await navigator.clipboard.writeText(registerUrl);
-        setInfo(`Ссылка для курса "${courseTitle}" скопирована`);
-      } catch {
-        setInfo(`Ссылка: ${registerUrl}`);
-      }
+      setShareLink(registerUrl);
+      setShareInviteExpiresAt(data.expiresAt ?? "");
     } catch {
-      setError("Ошибка сети при создании ссылки для курса");
+      setShareError("Ошибка сети при создании ссылки для курса");
     } finally {
-      setShareCourseId("");
+      setIsShareLoading(false);
+    }
+  };
+
+  const copyShareLink = async () => {
+    if (!shareLink) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      setIsShareCopied(true);
+      window.setTimeout(() => setIsShareCopied(false), 1800);
+    } catch {
+      setShareError("Не удалось скопировать ссылку");
+    }
+  };
+
+  const downloadQrCode = () => {
+    if (!qrCodeDataUrl) {
+      return;
+    }
+
+    const anchor = document.createElement("a");
+    anchor.href = qrCodeDataUrl;
+    anchor.download = `bilimmentor-course-${shareCourseId || "invite"}-qrcode.png`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+  };
+
+  const completeCourse = async () => {
+    if (!endCourseId) {
+      return;
+    }
+
+    setIsEndingCourse(true);
+    setError("");
+    setInfo("");
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/teacher/courses/${endCourseId}/complete`,
+        {
+          credentials: "include",
+          method: "PATCH",
+        },
+      );
+
+      const data = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        setError(data.message ?? "Не удалось завершить курс");
+        return;
+      }
+
+      setOverview((prev) => {
+        if (!prev?.courses) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          courses: prev.courses.map((course) =>
+            course.id === endCourseId
+              ? { ...course, isPublished: false }
+              : course,
+          ),
+        };
+      });
+
+      setEndCourseId("");
+      setEndCourseTitle("");
+      setInfo("Курс завершен");
+    } catch {
+      setError("Ошибка сети при завершении курса");
+    } finally {
+      setIsEndingCourse(false);
     }
   };
 
@@ -527,6 +708,20 @@ export default function TeacherDashboardPage() {
                             Опубликовать
                           </button>
                         )}
+                        {course.isPublished ? (
+                          <button
+                            type="button"
+                            className="rounded border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                            disabled={
+                              isEndingCourse && endCourseId === course.id
+                            }
+                            onClick={() =>
+                              openEndCourseModal(course.id, course.title)
+                            }
+                          >
+                            Конец курса
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           className="inline-flex items-center justify-center rounded border border-sky-200 bg-sky-50 px-3 py-1.5 text-sky-700 hover:bg-sky-100"
@@ -534,7 +729,7 @@ export default function TeacherDashboardPage() {
                           title="Поделиться"
                           disabled={shareCourseId === course.id}
                           onClick={() =>
-                            void shareCourseInvite(course.id, course.title)
+                            void openShareModal(course.id, course.title)
                           }
                         >
                           <Share2 className="h-3.5 w-3.5" />
@@ -640,6 +835,22 @@ export default function TeacherDashboardPage() {
       </section>
 
       <ConfirmModal
+        isOpen={Boolean(endCourseId)}
+        title="Завершить курс?"
+        description={
+          endCourseTitle
+            ? `Курс "${endCourseTitle}" будет завершен и скрыт для новых студентов.`
+            : "Курс будет завершен и скрыт для новых студентов."
+        }
+        confirmText="Завершить курс"
+        cancelText="Отмена"
+        tone="danger"
+        isBusy={isEndingCourse}
+        onCancel={closeEndCourseModal}
+        onConfirm={() => void completeCourse()}
+      />
+
+      <ConfirmModal
         isOpen={Boolean(deleteCourseId)}
         title="Удалить курс?"
         description={
@@ -654,6 +865,133 @@ export default function TeacherDashboardPage() {
         onCancel={closeDeleteModal}
         onConfirm={() => void deleteCourse()}
       />
+
+      {shareCourseId ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  Поделиться курсом
+                </h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  {shareCourseTitle}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeShareModal}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                aria-label="Закрыть"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {shareError ? (
+              <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {shareError}
+              </p>
+            ) : null}
+
+            {isShareLoading ? (
+              <p className="mt-4 text-sm text-slate-600">
+                Подготавливаем ссылку приглашения...
+              </p>
+            ) : shareLink ? (
+              <div className="mt-4 grid gap-4 md:grid-cols-[1fr_240px]">
+                <div className="space-y-3">
+                  <p className="text-sm text-slate-700">
+                    Отправьте ссылку или QR-код. После регистрации по ним
+                    студент автоматически получит доступ к курсу.
+                  </p>
+
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Ссылка для регистрации
+                    </p>
+                    <p className="break-all text-sm text-slate-800">
+                      {shareLink}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void copyShareLink()}
+                        className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        <Copy className="h-4 w-4" />
+                        {isShareCopied ? "Скопировано" : "Копировать ссылку"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <a
+                      href={whatsappShareUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                      WhatsApp
+                    </a>
+                    <a
+                      href={telegramShareUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-100"
+                    >
+                      <Send className="h-4 w-4" />
+                      Telegram
+                    </a>
+                  </div>
+
+                  {shareInviteExpiresAt ? (
+                    <p className="text-xs text-slate-500">
+                      Ссылка действует до{" "}
+                      {new Date(shareInviteExpiresAt).toLocaleString("ru-RU")}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="mb-2 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <QrCode className="h-4 w-4" />
+                    QR код курса
+                  </p>
+                  {isQrGenerating ? (
+                    <div className="flex h-52 w-52 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm text-slate-500">
+                      Генерация QR...
+                    </div>
+                  ) : qrCodeDataUrl ? (
+                    <img
+                      src={qrCodeDataUrl}
+                      alt="QR-код приглашения на курс"
+                      className="h-52 w-52 rounded-lg border border-slate-200 bg-white object-contain"
+                    />
+                  ) : (
+                    <div className="flex h-52 w-52 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm text-slate-500">
+                      QR недоступен
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={downloadQrCode}
+                      disabled={!qrCodeDataUrl || isQrGenerating}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Download className="h-4 w-4" />
+                      Скачать QR
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

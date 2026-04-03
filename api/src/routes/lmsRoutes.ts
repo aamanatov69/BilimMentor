@@ -161,6 +161,12 @@ lmsRoutes.patch(
   requireRole([UserRole.teacher]),
   asyncHandler(lmsController.teacherSetCourseVisibility),
 );
+lmsRoutes.patch(
+  "/api/teacher/courses/:id/complete",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherCompleteCourse),
+);
 
 lmsRoutes.get(
   "/api/notifications",

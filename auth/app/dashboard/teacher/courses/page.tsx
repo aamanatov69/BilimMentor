@@ -5,7 +5,6 @@ import {
   BookOpen,
   Copy,
   Download,
-  ImageUp,
   MessageCircle,
   Plus,
   QrCode,
@@ -61,6 +60,9 @@ export default function TeacherCoursesPage() {
   const [deleteCourseId, setDeleteCourseId] = useState("");
   const [deleteCourseTitle, setDeleteCourseTitle] = useState("");
   const [isDeletingCourse, setIsDeletingCourse] = useState(false);
+  const [endCourseId, setEndCourseId] = useState("");
+  const [endCourseTitle, setEndCourseTitle] = useState("");
+  const [isEndingCourse, setIsEndingCourse] = useState(false);
   const [viewCourseId, setViewCourseId] = useState("");
   const [viewCourseTitle, setViewCourseTitle] = useState("");
   const [viewLessons, setViewLessons] = useState<CourseLessonItem[]>([]);
@@ -77,7 +79,6 @@ export default function TeacherCoursesPage() {
   const [isShareCopied, setIsShareCopied] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
   const [isQrGenerating, setIsQrGenerating] = useState(false);
-  const [isQrSending, setIsQrSending] = useState(false);
   const isCreated = searchParams.get("created") === "1";
 
   const shareText = shareCourseTitle
@@ -264,6 +265,21 @@ export default function TeacherCoursesPage() {
     setDeleteCourseTitle("");
   };
 
+  const openEndCourseModal = (courseId: string, courseTitle: string) => {
+    setEndCourseId(courseId);
+    setEndCourseTitle(courseTitle);
+    setError("");
+  };
+
+  const closeEndCourseModal = () => {
+    if (isEndingCourse) {
+      return;
+    }
+
+    setEndCourseId("");
+    setEndCourseTitle("");
+  };
+
   const closeViewModal = () => {
     if (busyLessonId) {
       return;
@@ -324,6 +340,38 @@ export default function TeacherCoursesPage() {
       setError("Ошибка сети при удалении курса");
     } finally {
       setIsDeletingCourse(false);
+    }
+  };
+
+  const completeCourse = async () => {
+    if (!endCourseId) {
+      return;
+    }
+
+    setIsEndingCourse(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `${API_URL}/api/teacher/courses/${endCourseId}/complete`,
+        {
+          credentials: "include",
+          method: "PATCH",
+        },
+      );
+
+      const data = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        setError(data.message ?? "Не удалось завершить курс");
+        return;
+      }
+
+      setEndCourseId("");
+      setEndCourseTitle("");
+      await loadCourses();
+    } catch {
+      setError("Ошибка сети при завершении курса");
+    } finally {
+      setIsEndingCourse(false);
     }
   };
 
@@ -414,7 +462,6 @@ export default function TeacherCoursesPage() {
     setIsShareCopied(false);
     setQrCodeDataUrl("");
     setIsQrGenerating(false);
-    setIsQrSending(false);
   };
 
   const openShareModal = async (courseId: string, courseTitle: string) => {
@@ -425,7 +472,6 @@ export default function TeacherCoursesPage() {
     setShareError("");
     setIsShareCopied(false);
     setQrCodeDataUrl("");
-    setIsQrSending(false);
     setIsShareLoading(true);
 
     try {
@@ -484,53 +530,6 @@ export default function TeacherCoursesPage() {
     document.body.append(anchor);
     anchor.click();
     anchor.remove();
-  };
-
-  const shareQrCodeImage = async () => {
-    if (!qrCodeDataUrl) {
-      return;
-    }
-
-    if (
-      typeof navigator === "undefined" ||
-      typeof navigator.share !== "function"
-    ) {
-      setShareError(
-        "На этом устройстве отправка фото QR не поддерживается. Скачайте файл и отправьте вручную.",
-      );
-      return;
-    }
-
-    setIsQrSending(true);
-    setShareError("");
-    try {
-      const imageResponse = await fetch(qrCodeDataUrl);
-      const imageBlob = await imageResponse.blob();
-      const qrFile = new File(
-        [imageBlob],
-        `bilimmentor-course-${shareCourseId || "invite"}-qrcode.png`,
-        { type: "image/png" },
-      );
-
-      if (
-        typeof navigator.canShare === "function" &&
-        navigator.canShare({ files: [qrFile] })
-      ) {
-        await navigator.share({
-          title: `QR-код курса ${shareCourseTitle}`,
-          text: `${shareText}\n${shareLink}`,
-          files: [qrFile],
-        });
-      } else {
-        setShareError(
-          "Отправка фото QR недоступна в вашем браузере. Используйте кнопку Скачать.",
-        );
-      }
-    } catch {
-      setShareError("Не удалось отправить фото QR-кода");
-    } finally {
-      setIsQrSending(false);
-    }
   };
 
   const displayedCourses = [...courses]
@@ -785,6 +784,16 @@ export default function TeacherCoursesPage() {
                   <Share2 className="h-3.5 w-3.5" />
                   Поделиться
                 </button>
+                {course.isPublished ? (
+                  <button
+                    type="button"
+                    onClick={() => openEndCourseModal(course.id, course.title)}
+                    disabled={isEndingCourse && endCourseId === course.id}
+                    className="rounded border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                  >
+                    Конец курса
+                  </button>
+                ) : null}
               </div>
             </article>
           ))}
@@ -870,6 +879,18 @@ export default function TeacherCoursesPage() {
                           Опубликовать
                         </button>
                       )}
+                      {course.isPublished ? (
+                        <button
+                          type="button"
+                          className="rounded border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                          disabled={isEndingCourse && endCourseId === course.id}
+                          onClick={() =>
+                            openEndCourseModal(course.id, course.title)
+                          }
+                        >
+                          Конец курса
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() =>
@@ -912,6 +933,21 @@ export default function TeacherCoursesPage() {
         isBusy={isDeletingCourse}
         onCancel={closeDeleteModal}
         onConfirm={() => void deleteCourse()}
+      />
+
+      <ConfirmModal
+        isOpen={Boolean(endCourseId)}
+        title="Завершить курс?"
+        description={
+          endCourseTitle
+            ? `Курс \"${endCourseTitle}\" будет завершен и скрыт для новых студентов.`
+            : "Курс будет завершен и скрыт для новых студентов."
+        }
+        confirmText="Завершить курс"
+        cancelText="Отмена"
+        isBusy={isEndingCourse}
+        onCancel={closeEndCourseModal}
+        onConfirm={() => void completeCourse()}
       />
 
       <ConfirmModal
@@ -1045,15 +1081,6 @@ export default function TeacherCoursesPage() {
                     >
                       <Download className="h-4 w-4" />
                       Скачать QR
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void shareQrCodeImage()}
-                      disabled={!qrCodeDataUrl || isQrGenerating || isQrSending}
-                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <ImageUp className="h-4 w-4" />
-                      {isQrSending ? "Отправка..." : "Отправить QR фото"}
                     </button>
                   </div>
                 </div>

@@ -33,6 +33,7 @@ type StudentAssignment = {
     id: string;
     title: string;
     teacher: string;
+    completedByTeacher?: boolean;
   };
   submission: AssignmentSubmission | null;
 };
@@ -256,6 +257,7 @@ export default function StudentAssignmentsPage() {
   const renderCard = (assignment: StudentAssignment) => {
     const expanded = activeCardId === assignment.id;
     const attachments = attachmentDrafts[assignment.id] ?? [];
+    const readOnlyCourse = assignment.course.completedByTeacher === true;
 
     return (
       <article
@@ -270,6 +272,12 @@ export default function StudentAssignmentsPage() {
           {assignment.lessonTitle || "Без урока"}
         </p>
 
+        {readOnlyCourse ? (
+          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">
+            Курс завершен преподавателем. Доступен только просмотр задания.
+          </p>
+        ) : null}
+
         <p className="mt-2 text-xs text-slate-600">
           {assignment.dueAt
             ? `Срок: ${new Date(assignment.dueAt).toLocaleString("ru-RU")}`
@@ -278,18 +286,21 @@ export default function StudentAssignmentsPage() {
 
         <button
           type="button"
+          disabled={readOnlyCourse}
           onClick={() =>
             setActiveCardId((current) =>
               current === assignment.id ? null : assignment.id,
             )
           }
-          className="mt-3 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          className="mt-3 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {expanded
-            ? "Скрыть форму"
-            : assignment.submission
-              ? "Пересдать"
-              : "Сдать"}
+          {readOnlyCourse
+            ? "Только просмотр"
+            : expanded
+              ? "Скрыть форму"
+              : assignment.submission
+                ? "Пересдать"
+                : "Сдать"}
         </button>
 
         {expanded ? (

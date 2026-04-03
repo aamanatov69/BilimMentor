@@ -367,6 +367,29 @@ async function notifyStudentsAboutPublishedCourse(params: {
   });
 }
 
+async function notifyStudentsAboutCompletedCourse(params: {
+  courseId: string;
+  courseTitle: string;
+}) {
+  const enrollments = await lmsRepository.prisma.enrollment.findMany({
+    where: { courseId: params.courseId },
+    select: { studentId: true },
+  });
+
+  for (const enrollment of enrollments) {
+    await lmsRepository.prisma.notification.create({
+      data: {
+        id: await lmsRepository.nextNotificationId(),
+        type: NotificationType.system_message,
+        title: "Курс завершен",
+        body: `Курс "${params.courseTitle}" завершен преподавателем.`,
+        targetRole: NotificationTargetRole.student,
+        userId: enrollment.studentId,
+      },
+    });
+  }
+}
+
 async function notifyStudentsAboutNewAssignment(params: {
   courseId: string;
   courseTitle: string;
@@ -719,7 +742,7 @@ export async function listCourses(userId?: string) {
   const courses = await lmsRepository.prisma.course.findMany({
     where: {
       id: { in: enrollments.map((item) => item.courseId) },
-      isPublished: true,
+      OR: [{ isPublished: true }, { progress: { gte: 100 } }],
     },
     orderBy: { createdAt: "desc" },
   });
@@ -759,7 +782,7 @@ export async function getCourseById(courseId: string, userId?: string) {
   });
 
   ensure(enrollment, 403, "Доступ запрещен");
-  ensure(course.isPublished, 403, "Доступ запрещен");
+  ensure(course.isPublished || course.progress >= 100, 403, "Доступ запрещен");
 
   const studentProgress = await getStudentLessonProgress({
     courseId: course.id,
@@ -2365,6 +2388,42 @@ export async function teacherSetCourseVisibility(
   };
 }
 
+export async function teacherCompleteCourse(
+  userId: string | undefined,
+  courseId: string,
+) {
+  const currentUser = await requireCurrentUser(userId);
+  ensure(currentUser.role === UserRole.teacher, 403, "Доступ запрещен");
+
+  const course = await lmsRepository.prisma.course.findUnique({
+    where: { id: courseId },
+  });
+  ensure(course, 404, "Ресурс не найден");
+  ensure(course.teacherId === currentUser.id, 403, "Операция недоступна");
+  ensure(course.isPublished, 409, "Курс уже завершен");
+
+  const updated = await lmsRepository.prisma.course.update({
+    where: { id: courseId },
+    data: {
+      isPublished: false,
+      progress: Math.max(course.progress, 100),
+    },
+  });
+
+  await notifyStudentsAboutCompletedCourse({
+    courseId: updated.id,
+    courseTitle: updated.title,
+  });
+
+  return {
+    message: "Курс завершен",
+    course: {
+      ...updated,
+      modules: readModules(updated.modules),
+    },
+  };
+}
+
 export async function teacherUpdateCourse(
   userId: string | undefined,
   courseId: string,
@@ -3383,7 +3442,9 @@ export async function studentDashboardOverview(userId: string | undefined) {
   const enrollments = await lmsRepository.prisma.enrollment.findMany({
     where: {
       studentId: currentUser.id,
-      course: { isPublished: true },
+      course: {
+        OR: [{ isPublished: true }, { progress: { gte: 100 } }],
+      },
     },
     include: {
       course: {
@@ -3501,16 +3562,22 @@ export async function studentDashboardOverview(userId: string | undefined) {
       dueSoon: assignmentItems.some((item) => item.dueSoon),
       gpa,
     },
-    currentCourses: enrollments.map((item) => ({
-      progress: progressByCourseId.get(item.course.id)?.progressPercent ?? 0,
-      id: item.course.id,
-      name: item.course.title,
-      teacher: item.course.teacher.fullName,
-      status:
-        (progressByCourseId.get(item.course.id)?.progressPercent ?? 0) >= 100
-          ? "Enabled"
-          : "Disabled",
-    })),
+    currentCourses: enrollments.map((item) => {
+      const calculatedProgress =
+        progressByCourseId.get(item.course.id)?.progressPercent ?? 0;
+      const completedByTeacher =
+        !item.course.isPublished && item.course.progress >= 100;
+      const isCompleted = completedByTeacher || calculatedProgress >= 100;
+
+      return {
+        progress: calculatedProgress,
+        id: item.course.id,
+        name: item.course.title,
+        teacher: item.course.teacher.fullName,
+        status: isCompleted ? "Enabled" : "Disabled",
+        completedByTeacher,
+      };
+    }),
     assignments: assignmentItems,
     recentGrades: grades.slice(0, 5),
     announcements: notifications.map((item) => ({
@@ -3529,7 +3596,9 @@ export async function studentCourses(userId?: string) {
   const enrollments = await lmsRepository.prisma.enrollment.findMany({
     where: {
       studentId: currentUser.id,
-      course: { isPublished: true },
+      course: {
+        OR: [{ isPublished: true }, { progress: { gte: 100 } }],
+      },
     },
     include: { course: true },
     orderBy: { createdAt: "desc" },
@@ -3547,6 +3616,8 @@ export async function studentCourses(userId?: string) {
         ...item.course,
         modules: readModules(item.course.modules),
         progress: studentProgress.progressPercent,
+        completedByTeacher:
+          !item.course.isPublished && item.course.progress >= 100,
         studentProgress,
       };
     }),
@@ -3582,10 +3653,16 @@ export async function studentSetLessonCompletion(
 
   const course = await lmsRepository.prisma.course.findUnique({
     where: { id: normalizedCourseId },
-    select: { id: true, modules: true, isPublished: true },
+    select: { id: true, modules: true, isPublished: true, progress: true },
   });
   ensure(course, 404, "Ресурс не найден");
-  ensure(course.isPublished, 403, "Доступ запрещен");
+  ensure(
+    course.isPublished,
+    403,
+    course.progress >= 100
+      ? "Курс завершен. Доступен только просмотр."
+      : "Доступ запрещен",
+  );
 
   const visibleLessonIds = readVisibleLessonIds(course.modules);
   ensure(
@@ -3644,7 +3721,7 @@ export async function studentAssignments(userId?: string) {
   const assignments = await lmsRepository.prisma.assignment.findMany({
     where: {
       course: {
-        isPublished: true,
+        OR: [{ isPublished: true }, { progress: { gte: 100 } }],
         enrollments: {
           some: { studentId: currentUser.id },
         },
@@ -3656,6 +3733,8 @@ export async function studentAssignments(userId?: string) {
           id: true,
           title: true,
           modules: true,
+          isPublished: true,
+          progress: true,
           teacherId: true,
           teacher: {
             select: {
@@ -3698,6 +3777,8 @@ export async function studentAssignments(userId?: string) {
           id: item.course.id,
           title: item.course.title,
           teacher: item.course.teacher.fullName,
+          completedByTeacher:
+            !item.course.isPublished && item.course.progress >= 100,
         },
         submission: ownSubmission
           ? {
@@ -3757,7 +3838,13 @@ export async function studentSubmitAssignment(
     select: { id: true },
   });
   ensure(enrollment, 403, "Доступ запрещен");
-  ensure(assignment.course.isPublished, 403, "Операция недоступна");
+  ensure(
+    assignment.course.isPublished,
+    403,
+    assignment.course.progress >= 100
+      ? "Курс завершен. Доступен только просмотр."
+      : "Операция недоступна",
+  );
   ensure(
     isAssignmentVisibleToStudents(
       assignment.course.modules,

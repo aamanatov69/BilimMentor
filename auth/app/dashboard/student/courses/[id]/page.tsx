@@ -21,6 +21,8 @@ type CourseData = {
   id: string;
   title: string;
   description: string;
+  isPublished?: boolean;
+  progress?: number;
   modules?: CourseModule[];
   studentProgress?: StudentProgress;
 };
@@ -59,6 +61,10 @@ function toRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function normalizeLessonText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
 }
 
 function extractLessons(modules?: CourseModule[]) {
@@ -176,6 +182,27 @@ export default function StudentCourseDetailsPage() {
   const selectedLesson =
     lessons.find((lesson) => lesson.id === selectedLessonId) ?? null;
 
+  const courseCompletedByTeacher =
+    Boolean(course) &&
+    course?.isPublished === false &&
+    (course?.progress ?? 0) >= 100;
+
+  const shouldShowLessonDescription = useMemo(() => {
+    if (!selectedLesson?.description) return false;
+
+    const normalizedDescription = normalizeLessonText(
+      selectedLesson.description,
+    );
+    if (!normalizedDescription) return false;
+
+    const hasDuplicateMaterialText = selectedLesson.materials.some(
+      (material) =>
+        normalizeLessonText(material.text || "") === normalizedDescription,
+    );
+
+    return !hasDuplicateMaterialText;
+  }, [selectedLesson]);
+
   const completedLessonIds = new Set(
     course?.studentProgress?.completedLessonIds ?? [],
   );
@@ -284,16 +311,13 @@ export default function StudentCourseDetailsPage() {
       ) : null}
 
       {loading ? (
-        <section className="grid gap-4 xl:grid-cols-[280px_1fr_320px]">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <div
-              key={`skeleton-${index}`}
-              className="h-[460px] animate-pulse rounded-3xl border border-slate-200 bg-white"
-            />
-          ))}
+        <section className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+          <div className="h-[460px] animate-pulse rounded-3xl border border-slate-200 bg-white" />
+          <div className="h-[460px] animate-pulse rounded-3xl border border-slate-200 bg-white" />
+          <div className="h-[220px] animate-pulse rounded-3xl border border-slate-200 bg-white xl:col-span-2" />
         </section>
       ) : (
-        <section className="grid gap-4 xl:grid-cols-[280px_1fr_320px]">
+        <section className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
           <aside className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
               Уроки
@@ -332,7 +356,7 @@ export default function StudentCourseDetailsPage() {
             </div>
           </aside>
 
-          <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             {selectedLesson ? (
               <>
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -341,7 +365,10 @@ export default function StudentCourseDetailsPage() {
                   </h2>
                   <button
                     type="button"
-                    disabled={busyLessonId === selectedLesson.id}
+                    disabled={
+                      busyLessonId === selectedLesson.id ||
+                      courseCompletedByTeacher
+                    }
                     onClick={() =>
                       void setCompletion(
                         selectedLesson.id,
@@ -350,17 +377,26 @@ export default function StudentCourseDetailsPage() {
                     }
                     className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
                   >
-                    {busyLessonId === selectedLesson.id
-                      ? "Сохранение..."
-                      : completedLessonIds.has(selectedLesson.id)
-                        ? "Снять отметку"
-                        : "Отметить завершенным"}
+                    {courseCompletedByTeacher
+                      ? "Только просмотр"
+                      : busyLessonId === selectedLesson.id
+                        ? "Сохранение..."
+                        : completedLessonIds.has(selectedLesson.id)
+                          ? "Снять отметку"
+                          : "Отметить завершенным"}
                   </button>
                 </div>
 
-                {selectedLesson.description ? (
+                {courseCompletedByTeacher ? (
+                  <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                    Курс завершен преподавателем. Можно только просматривать
+                    уроки и материалы.
+                  </p>
+                ) : null}
+
+                {shouldShowLessonDescription ? (
                   <div
-                    className="mt-2 overflow-x-auto break-words text-sm text-slate-700"
+                    className="mt-3 overflow-x-auto break-words text-base leading-relaxed text-slate-700"
                     dangerouslySetInnerHTML={{
                       __html: renderTextWithMathTypeTokensHtml(
                         selectedLesson.description,
@@ -369,7 +405,7 @@ export default function StudentCourseDetailsPage() {
                   />
                 ) : null}
 
-                <div className="mt-5 space-y-3">
+                <div className="mt-6 space-y-4">
                   <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
                     Контент урока
                   </h3>
@@ -377,9 +413,9 @@ export default function StudentCourseDetailsPage() {
                     selectedLesson.materials.map((material) => (
                       <div
                         key={material.id}
-                        className="rounded-2xl border border-slate-200 p-3"
+                        className="rounded-2xl border border-slate-200 p-4"
                       >
-                        <p className="text-sm font-semibold text-slate-900">
+                        <p className="text-base font-semibold text-slate-900">
                           {material.title}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
@@ -388,7 +424,7 @@ export default function StudentCourseDetailsPage() {
                         {material.text ? (
                           material.type.toLowerCase() === "lecture" ? (
                             <div
-                              className="mt-2 overflow-x-auto break-words rounded-xl bg-slate-50 p-3 text-xs text-slate-700"
+                              className="mt-3 overflow-x-auto break-words rounded-xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-700"
                               dangerouslySetInnerHTML={{
                                 __html: renderTextWithMathTypeTokensHtml(
                                   material.text,
@@ -396,7 +432,7 @@ export default function StudentCourseDetailsPage() {
                               }}
                             />
                           ) : (
-                            <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs text-slate-700">
+                            <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-700">
                               {material.text}
                             </pre>
                           )
@@ -427,7 +463,7 @@ export default function StudentCourseDetailsPage() {
             )}
           </article>
 
-          <aside className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+          <aside className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
               Задания и дедлайны
             </h2>
