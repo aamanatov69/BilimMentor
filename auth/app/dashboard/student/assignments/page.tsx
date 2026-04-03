@@ -175,6 +175,11 @@ export default function StudentAssignmentsPage() {
     [rows],
   );
 
+  const activeAssignment = useMemo(
+    () => rows.find((item) => item.id === activeCardId) ?? null,
+    [rows, activeCardId],
+  );
+
   const handleSelectFiles = async (
     assignmentId: string,
     files: FileList | null,
@@ -255,14 +260,12 @@ export default function StudentAssignmentsPage() {
   };
 
   const renderCard = (assignment: StudentAssignment) => {
-    const expanded = activeCardId === assignment.id;
-    const attachments = attachmentDrafts[assignment.id] ?? [];
     const readOnlyCourse = assignment.course.completedByTeacher === true;
 
     return (
       <article
         key={assignment.id}
-        className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"
+        className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-200 hover:shadow"
       >
         <p className="text-sm font-semibold text-slate-900">
           {assignment.title}
@@ -287,183 +290,21 @@ export default function StudentAssignmentsPage() {
         <button
           type="button"
           disabled={readOnlyCourse}
-          onClick={() =>
-            setActiveCardId((current) =>
-              current === assignment.id ? null : assignment.id,
-            )
-          }
+          onClick={() => setActiveCardId(assignment.id)}
           className="mt-3 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {readOnlyCourse
             ? "Только просмотр"
-            : expanded
-              ? "Скрыть форму"
-              : assignment.submission
-                ? "Пересдать"
-                : "Сдать"}
+            : assignment.submission
+              ? "Пересдать"
+              : "Сдать"}
         </button>
-
-        {expanded ? (
-          <div className="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <textarea
-              value={textDrafts[assignment.id] ?? ""}
-              onChange={(event) =>
-                setTextDrafts((previous) => ({
-                  ...previous,
-                  [assignment.id]: event.target.value,
-                }))
-              }
-              placeholder="Текст ответа"
-              className="min-h-20 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
-            />
-
-            <textarea
-              value={formulaDrafts[assignment.id] ?? ""}
-              onChange={(event) =>
-                setFormulaDrafts((previous) => ({
-                  ...previous,
-                  [assignment.id]: event.target.value,
-                }))
-              }
-              placeholder="Формула (опционально)"
-              className="min-h-16 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
-            />
-
-            <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
-                MathType поле для формулы
-              </p>
-              <div className="mt-2 rounded-md border border-indigo-300 bg-white p-2">
-                {createElement("math-field", {
-                  className:
-                    "block min-h-12 w-full rounded-md border border-indigo-200 px-3 py-2 text-indigo-900",
-                  value: formulaDrafts[assignment.id] ?? "",
-                  ref: (node: unknown) => {
-                    mathFieldRefs.current[assignment.id] =
-                      (node as
-                        | (HTMLElement & {
-                            value?: string;
-                            getValue?: (format?: string) => string;
-                          })
-                        | null) ?? null;
-                  },
-                  onInput: (event: Event) => {
-                    const target = event.target as EventTarget & {
-                      value?: string;
-                      getValue?: (format?: string) => string;
-                    };
-                    const unstyled =
-                      typeof target.getValue === "function"
-                        ? target.getValue("latex-unstyled")
-                        : "";
-                    setFormulaDrafts((previous) => ({
-                      ...previous,
-                      [assignment.id]: unstyled || target.value || "",
-                    }));
-                  },
-                })}
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const formulaValue = getMathFieldFormula(assignment.id);
-                    if (!formulaValue) {
-                      return;
-                    }
-
-                    setFormulaDrafts((previous) => ({
-                      ...previous,
-                      [assignment.id]: formulaValue,
-                    }));
-                  }}
-                  className="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
-                >
-                  Вставить в поле формулы
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const formulaValue = getMathFieldFormula(assignment.id);
-                    if (!formulaValue) {
-                      return;
-                    }
-
-                    setTextDrafts((previous) => ({
-                      ...previous,
-                      [assignment.id]: `${previous[assignment.id] ?? ""}[[MATH:${formulaValue}]]`,
-                    }));
-                  }}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                >
-                  Вставить в текст ответа
-                </button>
-              </div>
-              {formulaDrafts[assignment.id]?.trim() ? (
-                <div className="mt-2 rounded-md border border-indigo-200 bg-white p-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-700">
-                    Предпросмотр формулы
-                  </p>
-                  <div
-                    className="mt-2 overflow-x-auto text-slate-900"
-                    dangerouslySetInnerHTML={{
-                      __html: renderFormulaAsMathTypeHtml(
-                        formulaDrafts[assignment.id],
-                      ),
-                    }}
-                  />
-                </div>
-              ) : null}
-            </div>
-
-            <textarea
-              value={codeDrafts[assignment.id] ?? ""}
-              onChange={(event) =>
-                setCodeDrafts((previous) => ({
-                  ...previous,
-                  [assignment.id]: event.target.value,
-                }))
-              }
-              placeholder="Код (опционально)"
-              className="min-h-16 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
-            />
-
-            <label className="inline-flex cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-              Добавить файлы
-              <input
-                type="file"
-                className="hidden"
-                multiple
-                onChange={(event) =>
-                  void handleSelectFiles(assignment.id, event.target.files)
-                }
-              />
-            </label>
-
-            {attachments.length ? (
-              <ul className="space-y-1 text-xs text-slate-600">
-                {attachments.map((file, index) => (
-                  <li key={`${assignment.id}-file-${index}`}>• {file.name}</li>
-                ))}
-              </ul>
-            ) : null}
-
-            <button
-              type="button"
-              disabled={busy[assignment.id]}
-              onClick={() => void submitAssignment(assignment)}
-              className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-            >
-              {busy[assignment.id] ? "Отправка..." : "Отправить"}
-            </button>
-          </div>
-        ) : null}
       </article>
     );
   };
 
   return (
-    <main className="space-y-4">
+    <main className="space-y-6">
       {error ? (
         <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {error}
@@ -480,62 +321,268 @@ export default function StudentAssignmentsPage() {
           ))}
         </section>
       ) : (
-        <section className="grid gap-4 xl:grid-cols-3">
-          <article className="rounded-3xl border border-amber-200 bg-amber-50/40 p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-700">
-              Доступные ({pendingRows.length})
-            </h2>
-            <div className="mt-3 space-y-2">
-              {pendingRows.length ? (
-                pendingRows.map(renderCard)
-              ) : (
-                <div className="rounded-2xl border border-amber-200 bg-white px-3 py-2 text-sm text-amber-700">
-                  <p>Нет доступных заданий.</p>
-                  <p className="mt-1 text-xs text-amber-700/90">
-                    Проверьте раздел курсов: возможно, доступ к новому курсу еще
-                    не подтвержден.
+        <>
+          {activeAssignment ? (
+            <section className="rounded-3xl border border-indigo-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-semibold text-slate-900">
+                    {activeAssignment.submission
+                      ? "Пересдача задания"
+                      : "Сдача задания"}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {activeAssignment.title} · {activeAssignment.course.title}
                   </p>
                 </div>
-              )}
-            </div>
-          </article>
+                <button
+                  type="button"
+                  onClick={() => setActiveCardId(null)}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Свернуть
+                </button>
+              </div>
 
-          <article className="rounded-3xl border border-emerald-200 bg-emerald-50/40 p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-700">
-              Сданы ({completedRows.length})
-            </h2>
-            <div className="mt-3 space-y-2">
-              {completedRows.length ? (
-                completedRows.map(renderCard)
-              ) : (
-                <div className="rounded-2xl border border-emerald-200 bg-white px-3 py-2 text-sm text-emerald-700">
-                  <p>Пока ничего не сдано.</p>
-                  <p className="mt-1 text-xs text-emerald-700/90">
-                    После первой отправки здесь появится история ваших работ.
-                  </p>
-                </div>
-              )}
-            </div>
-          </article>
+              <div className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <textarea
+                  value={textDrafts[activeAssignment.id] ?? ""}
+                  onChange={(event) =>
+                    setTextDrafts((previous) => ({
+                      ...previous,
+                      [activeAssignment.id]: event.target.value,
+                    }))
+                  }
+                  placeholder="Текст ответа"
+                  className="min-h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
+                />
 
-          <article className="rounded-3xl border border-rose-200 bg-rose-50/40 p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-rose-700">
-              Просроченные ({missedRows.length})
-            </h2>
-            <div className="mt-3 space-y-2">
-              {missedRows.length ? (
-                missedRows.map(renderCard)
-              ) : (
-                <div className="rounded-2xl border border-rose-200 bg-white px-3 py-2 text-sm text-rose-700">
-                  <p>Просроченных нет.</p>
-                  <p className="mt-1 text-xs text-rose-700/90">
-                    Отличный темп. Старайтесь отправлять задания до дедлайна.
+                <textarea
+                  value={formulaDrafts[activeAssignment.id] ?? ""}
+                  onChange={(event) =>
+                    setFormulaDrafts((previous) => ({
+                      ...previous,
+                      [activeAssignment.id]: event.target.value,
+                    }))
+                  }
+                  placeholder="Формула (опционально)"
+                  className="min-h-16 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
+                />
+
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+                    MathType поле для формулы
                   </p>
+                  <div className="mt-2 rounded-md border border-indigo-300 bg-white p-2">
+                    {createElement("math-field", {
+                      className:
+                        "block min-h-12 w-full rounded-md border border-indigo-200 px-3 py-2 text-indigo-900",
+                      value: formulaDrafts[activeAssignment.id] ?? "",
+                      ref: (node: unknown) => {
+                        mathFieldRefs.current[activeAssignment.id] =
+                          (node as
+                            | (HTMLElement & {
+                                value?: string;
+                                getValue?: (format?: string) => string;
+                              })
+                            | null) ?? null;
+                      },
+                      onInput: (event: Event) => {
+                        const target = event.target as EventTarget & {
+                          value?: string;
+                          getValue?: (format?: string) => string;
+                        };
+                        const unstyled =
+                          typeof target.getValue === "function"
+                            ? target.getValue("latex-unstyled")
+                            : "";
+                        setFormulaDrafts((previous) => ({
+                          ...previous,
+                          [activeAssignment.id]: unstyled || target.value || "",
+                        }));
+                      },
+                    })}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const formulaValue = getMathFieldFormula(
+                          activeAssignment.id,
+                        );
+                        if (!formulaValue) {
+                          return;
+                        }
+
+                        setFormulaDrafts((previous) => ({
+                          ...previous,
+                          [activeAssignment.id]: formulaValue,
+                        }));
+                      }}
+                      className="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                    >
+                      Вставить в поле формулы
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const formulaValue = getMathFieldFormula(
+                          activeAssignment.id,
+                        );
+                        if (!formulaValue) {
+                          return;
+                        }
+
+                        setTextDrafts((previous) => ({
+                          ...previous,
+                          [activeAssignment.id]: `${previous[activeAssignment.id] ?? ""}[[MATH:${formulaValue}]]`,
+                        }));
+                      }}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                    >
+                      Вставить в текст ответа
+                    </button>
+                  </div>
+                  {formulaDrafts[activeAssignment.id]?.trim() ? (
+                    <div className="mt-2 rounded-md border border-indigo-200 bg-white p-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-700">
+                        Предпросмотр формулы
+                      </p>
+                      <div
+                        className="mt-2 overflow-x-auto text-slate-900"
+                        dangerouslySetInnerHTML={{
+                          __html: renderFormulaAsMathTypeHtml(
+                            formulaDrafts[activeAssignment.id],
+                          ),
+                        }}
+                      />
+                    </div>
+                  ) : null}
                 </div>
-              )}
-            </div>
-          </article>
-        </section>
+
+                <textarea
+                  value={codeDrafts[activeAssignment.id] ?? ""}
+                  onChange={(event) =>
+                    setCodeDrafts((previous) => ({
+                      ...previous,
+                      [activeAssignment.id]: event.target.value,
+                    }))
+                  }
+                  placeholder="Код (опционально)"
+                  className="min-h-20 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
+                />
+
+                <label className="inline-flex w-fit cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                  Добавить файлы
+                  <input
+                    type="file"
+                    className="hidden"
+                    multiple
+                    onChange={(event) =>
+                      void handleSelectFiles(
+                        activeAssignment.id,
+                        event.target.files,
+                      )
+                    }
+                  />
+                </label>
+
+                {(attachmentDrafts[activeAssignment.id] ?? []).length ? (
+                  <ul className="space-y-1 text-xs text-slate-600">
+                    {(attachmentDrafts[activeAssignment.id] ?? []).map(
+                      (file, index) => (
+                        <li key={`${activeAssignment.id}-file-${index}`}>
+                          • {file.name}
+                        </li>
+                      ),
+                    )}
+                  </ul>
+                ) : null}
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={busy[activeAssignment.id]}
+                    onClick={() => void submitAssignment(activeAssignment)}
+                    className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                  >
+                    {busy[activeAssignment.id] ? "Отправка..." : "Отправить"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveCardId(null)}
+                    className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          <section
+            className={
+              activeAssignment
+                ? "grid gap-4 xl:grid-cols-3 opacity-70 transition-opacity"
+                : "grid gap-4 xl:grid-cols-3"
+            }
+          >
+            <article className="rounded-3xl border border-amber-200 bg-amber-50/40 p-4">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-700">
+                Доступные ({pendingRows.length})
+              </h2>
+              <div className="mt-3 space-y-2">
+                {pendingRows.length ? (
+                  pendingRows.map(renderCard)
+                ) : (
+                  <div className="rounded-2xl border border-amber-200 bg-white px-3 py-2 text-sm text-amber-700">
+                    <p>Нет доступных заданий.</p>
+                    <p className="mt-1 text-xs text-amber-700/90">
+                      Проверьте раздел курсов: возможно, доступ к новому курсу
+                      еще не подтвержден.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </article>
+
+            <article className="rounded-3xl border border-emerald-200 bg-emerald-50/40 p-4">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-700">
+                Сданы ({completedRows.length})
+              </h2>
+              <div className="mt-3 space-y-2">
+                {completedRows.length ? (
+                  completedRows.map(renderCard)
+                ) : (
+                  <div className="rounded-2xl border border-emerald-200 bg-white px-3 py-2 text-sm text-emerald-700">
+                    <p>Пока ничего не сдано.</p>
+                    <p className="mt-1 text-xs text-emerald-700/90">
+                      После первой отправки здесь появится история ваших работ.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </article>
+
+            <article className="rounded-3xl border border-rose-200 bg-rose-50/40 p-4">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-rose-700">
+                Просроченные ({missedRows.length})
+              </h2>
+              <div className="mt-3 space-y-2">
+                {missedRows.length ? (
+                  missedRows.map(renderCard)
+                ) : (
+                  <div className="rounded-2xl border border-rose-200 bg-white px-3 py-2 text-sm text-rose-700">
+                    <p>Просроченных нет.</p>
+                    <p className="mt-1 text-xs text-rose-700/90">
+                      Отличный темп. Старайтесь отправлять задания до дедлайна.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </article>
+          </section>
+        </>
       )}
     </main>
   );
