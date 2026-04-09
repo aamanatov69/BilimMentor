@@ -1,5 +1,6 @@
 "use client";
 
+import { Eye, MessageSquareText } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -358,16 +359,15 @@ export default function TeacherGradesPage() {
                       <p className="text-sm font-semibold">
                         {student.studentName}
                       </p>
-                      <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+                      <div className="mt-2 flex items-center gap-1.5">
                         <Link
                           href={`/dashboard/teacher/assignments?submissionId=${row.submissionId}`}
-                          className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+                          aria-label="Просмотреть"
+                          title="Просмотреть"
                         >
-                          Просмотреть
+                          <Eye className="h-4 w-4" />
                         </Link>
-                        <label className="text-xs text-slate-600">
-                          Оценка:
-                        </label>
                         <input
                           type="number"
                           min={0}
@@ -387,18 +387,17 @@ export default function TeacherGradesPage() {
                               void saveGrade(row);
                             }
                           }}
-                          className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                          className="h-8 w-16 min-w-0 rounded border border-slate-300 px-2 text-sm"
                           placeholder="0-100"
+                          aria-label="Оценка"
                         />
                         <button
                           type="button"
                           onClick={() => void saveGrade(row)}
                           disabled={!!savingIds[row.submissionId]}
-                          className="rounded bg-blue-700 px-3 py-1 text-sm text-white hover:bg-blue-800 disabled:opacity-60"
+                          className="inline-flex h-8 min-w-0 flex-1 items-center justify-center rounded bg-blue-700 px-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
                         >
-                          {savingIds[row.submissionId]
-                            ? "Сохранение..."
-                            : "Оценить"}
+                          {savingIds[row.submissionId] ? "..." : "Оценить"}
                         </button>
                         <button
                           type="button"
@@ -407,9 +406,11 @@ export default function TeacherGradesPage() {
                             setCommentDraft(row.feedback ?? "");
                             setCommentMessage("");
                           }}
-                          className="text-sm text-blue-700 hover:underline"
+                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+                          aria-label="Комментарий"
+                          title="Комментарий"
                         >
-                          Комментарий
+                          <MessageSquareText className="h-4 w-4" />
                         </button>
                       </div>
                     </div>
