@@ -1,8 +1,10 @@
 "use client";
 
-import { createElement, useEffect, useMemo, useRef, useState } from "react";
-
-import { renderFormulaAsMathTypeHtml } from "@/lib/math-render";
+import "katex/dist/katex.min.css";
+import { useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import rehypeKatex from "rehype-katex";
+import remarkMath from "remark-math";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -42,6 +44,42 @@ type AttachmentDraft = SubmissionAttachment & {
   dataBase64: string;
 };
 
+function normalizeMarkdownMath(input: string) {
+  return input
+    .replace(/\r\n/g, "\n")
+    .replace(/\[\[(MATH|CHEM):([\s\S]*?)\]\]/g, (_match, _type, formula) => {
+      const value = String(formula ?? "").trim();
+      return value ? `\n$$\n${value}\n$$\n` : "";
+    })
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_match, formula) => {
+      const value = String(formula ?? "").trim();
+      return value ? `\n$$\n${value}\n$$\n` : "";
+    })
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_match, formula) => {
+      const value = String(formula ?? "").trim();
+      return value ? `$${value}$` : "";
+    })
+    .replace(/\$\$([^\n$][^\n]*?[^\n$]?)\$\$/g, (_match, formula) => {
+      const value = String(formula ?? "").trim();
+      return value ? `$${value}$` : "";
+    });
+}
+
+function safeUrlTransform(url: string) {
+  if (/^\/uploads\//i.test(url)) {
+    if (typeof window !== "undefined") {
+      return `${window.location.origin}${url}`;
+    }
+    return url;
+  }
+
+  if (/^data:image\//i.test(url)) {
+    return url;
+  }
+
+  return defaultUrlTransform(url);
+}
+
 function isOverdue(dueAt: string | null) {
   if (!dueAt) return false;
   const ts = new Date(dueAt).getTime();
@@ -73,45 +111,11 @@ export default function StudentAssignmentsPage() {
   const [busy, setBusy] = useState<Record<string, boolean>>({});
 
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
-  const [textDrafts, setTextDrafts] = useState<Record<string, string>>({});
-  const [formulaDrafts, setFormulaDrafts] = useState<Record<string, string>>(
-    {},
-  );
-  const [codeDrafts, setCodeDrafts] = useState<Record<string, string>>({});
+  const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({});
   const [attachmentDrafts, setAttachmentDrafts] = useState<
     Record<string, AttachmentDraft[]>
   >({});
-  const mathFieldRefs = useRef<
-    Record<
-      string,
-      | (HTMLElement & {
-          value?: string;
-          getValue?: (format?: string) => string;
-        })
-      | null
-    >
-  >({});
-
-  useEffect(() => {
-    void import("mathlive");
-  }, []);
-
-  const getMathFieldFormula = (assignmentId: string) => {
-    const node = mathFieldRefs.current[assignmentId];
-    if (!node) {
-      return "";
-    }
-
-    const unstyled =
-      typeof node.getValue === "function"
-        ? node.getValue("latex-unstyled")
-        : "";
-    if (unstyled) {
-      return unstyled;
-    }
-
-    return node.value ?? "";
-  };
+  const textareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
   const loadRows = async () => {
     setLoading(true);
@@ -134,19 +138,21 @@ export default function StudentAssignmentsPage() {
 
       const assignments = data.assignments ?? [];
       setRows(assignments);
-      setTextDrafts(
+      setAnswerDrafts(
         Object.fromEntries(
-          assignments.map((item) => [item.id, item.submission?.text ?? ""]),
-        ),
-      );
-      setFormulaDrafts(
-        Object.fromEntries(
-          assignments.map((item) => [item.id, item.submission?.formula ?? ""]),
-        ),
-      );
-      setCodeDrafts(
-        Object.fromEntries(
-          assignments.map((item) => [item.id, item.submission?.code ?? ""]),
+          assignments.map((item) => {
+            const parts = [item.submission?.text ?? ""];
+            const formula = (item.submission?.formula ?? "").trim();
+            const code = (item.submission?.code ?? "").trim();
+            if (formula) {
+              parts.push(`\n$$\n${formula}\n$$\n`);
+            }
+            if (code) {
+              parts.push(`\n\`\`\`\n${code}\n\`\`\`\n`);
+            }
+
+            return [item.id, parts.join("\n").trim()];
+          }),
         ),
       );
     } catch {
@@ -206,10 +212,7 @@ export default function StudentAssignmentsPage() {
   };
 
   const submitAssignment = async (assignment: StudentAssignment) => {
-    const text = (textDrafts[assignment.id] ?? "").trim();
-    const formulaRaw = formulaDrafts[assignment.id] ?? "";
-    const formula = formulaRaw.trim();
-    const code = (codeDrafts[assignment.id] ?? "").trim();
+    const text = (answerDrafts[assignment.id] ?? "").trim();
     const attachments = attachmentDrafts[assignment.id] ?? [];
 
     if (isOverdue(assignment.dueAt)) {
@@ -217,8 +220,8 @@ export default function StudentAssignmentsPage() {
       return;
     }
 
-    if (!text && !formula && !code && attachments.length === 0) {
-      setError("Добавьте текст, формулу, код или вложение");
+    if (!text && attachments.length === 0) {
+      setError("Добавьте текст ответа или вложение");
       return;
     }
 
@@ -236,8 +239,8 @@ export default function StudentAssignmentsPage() {
           },
           body: JSON.stringify({
             content: text,
-            formula: formulaRaw,
-            code,
+            formula: "",
+            code: "",
             attachments,
           }),
         },
@@ -256,6 +259,81 @@ export default function StudentAssignmentsPage() {
       setError("Ошибка сети при отправке");
     } finally {
       setBusy((previous) => ({ ...previous, [assignment.id]: false }));
+    }
+  };
+
+  const uploadPastedImage = async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file, file.name || "pasted-image.png");
+
+    const response = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    });
+
+    const payload = (await response.json()) as {
+      url?: string;
+      message?: string;
+    };
+
+    if (!response.ok || !payload.url) {
+      throw new Error(payload.message || "Не удалось загрузить изображение");
+    }
+
+    return payload.url;
+  };
+
+  const handlePasteImages = async (
+    assignmentId: string,
+    event: React.ClipboardEvent<HTMLTextAreaElement>,
+  ) => {
+    const items = Array.from(event.clipboardData?.items ?? []);
+    const imageFiles = items
+      .filter((item) => item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+
+    if (!imageFiles.length) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const textarea = textareaRefs.current[assignmentId];
+    const current = answerDrafts[assignmentId] ?? "";
+    const start = textarea?.selectionStart ?? current.length;
+    const end = textarea?.selectionEnd ?? current.length;
+
+    try {
+      const uploadedUrls = await Promise.all(
+        imageFiles.map((file) => uploadPastedImage(file)),
+      );
+
+      const insertion = `\n${uploadedUrls.map((url) => `![image](${url})`).join("\n\n")}\n`;
+      const nextValue =
+        current.slice(0, start) + insertion + current.slice(end);
+
+      setAnswerDrafts((previous) => ({
+        ...previous,
+        [assignmentId]: nextValue,
+      }));
+
+      window.requestAnimationFrame(() => {
+        const nextTextarea = textareaRefs.current[assignmentId];
+        if (!nextTextarea) {
+          return;
+        }
+        const cursor = start + insertion.length;
+        nextTextarea.focus();
+        nextTextarea.setSelectionRange(cursor, cursor);
+      });
+    } catch (pasteError) {
+      setError(
+        pasteError instanceof Error
+          ? pasteError.message
+          : "Не удалось загрузить изображение",
+      );
     }
   };
 
@@ -346,131 +424,53 @@ export default function StudentAssignmentsPage() {
 
               <div className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <textarea
-                  value={textDrafts[activeAssignment.id] ?? ""}
+                  ref={(node) => {
+                    textareaRefs.current[activeAssignment.id] = node;
+                  }}
+                  value={answerDrafts[activeAssignment.id] ?? ""}
                   onChange={(event) =>
-                    setTextDrafts((previous) => ({
+                    setAnswerDrafts((previous) => ({
                       ...previous,
                       [activeAssignment.id]: event.target.value,
                     }))
                   }
-                  placeholder="Текст ответа"
-                  className="min-h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
+                  onPaste={(event) => {
+                    void handlePasteImages(activeAssignment.id, event);
+                  }}
+                  placeholder="Ответ: Markdown, LaTeX ($$y = x^2$$), ссылки и фото через Ctrl+V"
+                  className="min-h-40 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
                 />
 
-                <textarea
-                  value={formulaDrafts[activeAssignment.id] ?? ""}
-                  onChange={(event) =>
-                    setFormulaDrafts((previous) => ({
-                      ...previous,
-                      [activeAssignment.id]: event.target.value,
-                    }))
-                  }
-                  placeholder="Формула (опционально)"
-                  className="min-h-16 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
-                />
-
-                <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
-                    MathType поле для формулы
-                  </p>
-                  <div className="mt-2 rounded-md border border-indigo-300 bg-white p-2">
-                    {createElement("math-field", {
-                      className:
-                        "block min-h-12 w-full rounded-md border border-indigo-200 px-3 py-2 text-indigo-900",
-                      value: formulaDrafts[activeAssignment.id] ?? "",
-                      ref: (node: unknown) => {
-                        mathFieldRefs.current[activeAssignment.id] =
-                          (node as
-                            | (HTMLElement & {
-                                value?: string;
-                                getValue?: (format?: string) => string;
-                              })
-                            | null) ?? null;
-                      },
-                      onInput: (event: Event) => {
-                        const target = event.target as EventTarget & {
-                          value?: string;
-                          getValue?: (format?: string) => string;
-                        };
-                        const unstyled =
-                          typeof target.getValue === "function"
-                            ? target.getValue("latex-unstyled")
-                            : "";
-                        setFormulaDrafts((previous) => ({
-                          ...previous,
-                          [activeAssignment.id]: unstyled || target.value || "",
-                        }));
-                      },
-                    })}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const formulaValue = getMathFieldFormula(
-                          activeAssignment.id,
-                        );
-                        if (!formulaValue) {
-                          return;
-                        }
-
-                        setFormulaDrafts((previous) => ({
-                          ...previous,
-                          [activeAssignment.id]: formulaValue,
-                        }));
-                      }}
-                      className="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
-                    >
-                      Вставить в поле формулы
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const formulaValue = getMathFieldFormula(
-                          activeAssignment.id,
-                        );
-                        if (!formulaValue) {
-                          return;
-                        }
-
-                        setTextDrafts((previous) => ({
-                          ...previous,
-                          [activeAssignment.id]: `${previous[activeAssignment.id] ?? ""}[[MATH:${formulaValue}]]`,
-                        }));
-                      }}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                    >
-                      Вставить в текст ответа
-                    </button>
-                  </div>
-                  {formulaDrafts[activeAssignment.id]?.trim() ? (
-                    <div className="mt-2 rounded-md border border-indigo-200 bg-white p-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-700">
-                        Предпросмотр формулы
-                      </p>
-                      <div
-                        className="mt-2 overflow-x-auto text-slate-900"
-                        dangerouslySetInnerHTML={{
-                          __html: renderFormulaAsMathTypeHtml(
-                            formulaDrafts[activeAssignment.id],
+                {(answerDrafts[activeAssignment.id] ?? "").trim() ? (
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Preview
+                    </p>
+                    <div className="prose prose-slate max-w-none break-words text-sm leading-6">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkMath]}
+                        rehypePlugins={[rehypeKatex]}
+                        urlTransform={safeUrlTransform}
+                        components={{
+                          a: ({ node, ...props }) => (
+                            <a {...props} target="_blank" rel="noreferrer" />
+                          ),
+                          img: ({ node, ...props }) => (
+                            <img
+                              {...props}
+                              className="my-3 max-h-[360px] w-auto max-w-full rounded-lg border border-slate-200 object-contain"
+                              loading="lazy"
+                            />
                           ),
                         }}
-                      />
+                      >
+                        {normalizeMarkdownMath(
+                          answerDrafts[activeAssignment.id] ?? "",
+                        )}
+                      </ReactMarkdown>
                     </div>
-                  ) : null}
-                </div>
-
-                <textarea
-                  value={codeDrafts[activeAssignment.id] ?? ""}
-                  onChange={(event) =>
-                    setCodeDrafts((previous) => ({
-                      ...previous,
-                      [activeAssignment.id]: event.target.value,
-                    }))
-                  }
-                  placeholder="Код (опционально)"
-                  className="min-h-20 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
-                />
+                  </div>
+                ) : null}
 
                 <label className="inline-flex w-fit cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                   Добавить файлы

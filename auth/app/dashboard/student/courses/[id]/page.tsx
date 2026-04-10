@@ -1,10 +1,12 @@
 "use client";
 
+import "katex/dist/katex.min.css";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-
-import { renderTextWithMathTypeTokensHtml } from "@/lib/math-render";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import rehypeKatex from "rehype-katex";
+import remarkMath from "remark-math";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -34,6 +36,9 @@ type LessonMaterial = {
   text: string;
   url: string;
   fileName: string;
+  fileType: string;
+  fileSize: number;
+  fileDataBase64: string;
 };
 
 type LessonItem = {
@@ -63,8 +68,98 @@ function toRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function base64ToBlob(base64Raw: string, mimeType: string) {
+  const cleaned = base64Raw
+    .replace(/^data:[^;]+;base64,/, "")
+    .replace(/\s+/g, "")
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+
+  const padded =
+    cleaned + (cleaned.length % 4 ? "=".repeat(4 - (cleaned.length % 4)) : "");
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new Blob([bytes], { type: mimeType });
+}
+
 function normalizeLessonText(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeMarkdownMath(input: string) {
+  return input
+    .replace(/\r\n/g, "\n")
+    .replace(/\[\[(MATH|CHEM):([\s\S]*?)\]\]/g, (_match, _type, formula) => {
+      const value = String(formula ?? "").trim();
+      return value ? `\n$$\n${value}\n$$\n` : "";
+    })
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_match, formula) => {
+      const value = String(formula ?? "").trim();
+      return value ? `\n$$\n${value}\n$$\n` : "";
+    })
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_match, formula) => {
+      const value = String(formula ?? "").trim();
+      return value ? `$${value}$` : "";
+    })
+    .replace(/\$\$([^\n$][^\n]*?[^\n$]?)\$\$/g, (_match, formula) => {
+      const value = String(formula ?? "").trim();
+      return value ? `$${value}$` : "";
+    });
+}
+
+const safeUrlTransform = (url: string) => {
+  if (/^\/uploads\//i.test(url)) {
+    if (typeof window !== "undefined") {
+      return `${window.location.origin}${url}`;
+    }
+    return url;
+  }
+
+  if (/^data:image\//i.test(url)) {
+    return url;
+  }
+
+  return defaultUrlTransform(url);
+};
+
+function looksLikeImageUrl(url: string) {
+  const normalized = url.trim().toLowerCase();
+  if (!normalized) return false;
+
+  return (
+    normalized.startsWith("data:image/") ||
+    /\.(png|jpe?g|gif|webp|svg|bmp|ico)(\?.*)?$/.test(normalized) ||
+    normalized.startsWith("/uploads/")
+  );
+}
+
+function buildAttachmentUrlTransform(materials: LessonMaterial[]) {
+  return (url: string) => {
+    if (/^attachment:\/\//i.test(url)) {
+      const attachmentName = decodeURIComponent(
+        url.replace(/^attachment:\/\//i, ""),
+      ).trim();
+
+      if (!attachmentName) {
+        return "";
+      }
+
+      const match = materials.find((material) => {
+        const byTitle = (material.title || "").trim();
+        const byFileName = (material.fileName || "").trim();
+        return byTitle === attachmentName || byFileName === attachmentName;
+      });
+
+      return match?.url || "";
+    }
+
+    return safeUrlTransform(url);
+  };
 }
 
 function extractLessons(modules?: CourseModule[]) {
@@ -85,6 +180,7 @@ function extractLessons(modules?: CourseModule[]) {
         .map((item, materialIndex) => {
           const material = toRecord(item);
           if (!material) return null;
+          const file = toRecord(material.file);
           return {
             id: asString(material.id) || `material-${index}-${materialIndex}`,
             title: asString(material.title) || `Материал ${materialIndex + 1}`,
@@ -96,7 +192,10 @@ function extractLessons(modules?: CourseModule[]) {
               asString(material.table) ||
               "",
             url: asString(material.url) || "",
-            fileName: asString(toRecord(material.file)?.name),
+            fileName: asString(file?.name),
+            fileType: asString(file?.type),
+            fileSize: Number(file?.size) || 0,
+            fileDataBase64: asString(file?.dataBase64),
           };
         })
         .filter((item): item is NonNullable<typeof item> => item !== null);
@@ -117,9 +216,11 @@ export default function StudentCourseDetailsPage() {
   const [course, setCourse] = useState<CourseData | null>(null);
   const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
   const [selectedLessonId, setSelectedLessonId] = useState("");
+  const [lessonFocusMode, setLessonFocusMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busyLessonId, setBusyLessonId] = useState("");
+  const [busyMaterialId, setBusyMaterialId] = useState("");
 
   const loadData = async () => {
     setLoading(true);
@@ -182,6 +283,18 @@ export default function StudentCourseDetailsPage() {
   const selectedLesson =
     lessons.find((lesson) => lesson.id === selectedLessonId) ?? null;
 
+  const selectedLessonIndex = useMemo(
+    () => lessons.findIndex((lesson) => lesson.id === selectedLessonId),
+    [lessons, selectedLessonId],
+  );
+
+  const previousLesson =
+    selectedLessonIndex > 0 ? lessons[selectedLessonIndex - 1] : null;
+  const nextLesson =
+    selectedLessonIndex >= 0 && selectedLessonIndex < lessons.length - 1
+      ? lessons[selectedLessonIndex + 1]
+      : null;
+
   const courseCompletedByTeacher =
     Boolean(course) &&
     course?.isPublished === false &&
@@ -217,6 +330,11 @@ export default function StudentCourseDetailsPage() {
           lessons.some((lesson) => lesson.id === item.lessonId)),
     );
   }, [assignments, courseId, lessons]);
+
+  const lessonUrlTransform = useMemo(
+    () => buildAttachmentUrlTransform(selectedLesson?.materials ?? []),
+    [selectedLesson?.materials],
+  );
 
   const setCompletion = async (lessonId: string, completed: boolean) => {
     setBusyLessonId(lessonId);
@@ -257,15 +375,74 @@ export default function StudentCourseDetailsPage() {
     }
   };
 
+  const openMaterialFile = async (material: LessonMaterial) => {
+    if (!material.fileDataBase64) {
+      setError("Файл материала недоступен");
+      return;
+    }
+
+    setBusyMaterialId(material.id);
+    setError("");
+    const openedWindow = window.open("about:blank", "_blank");
+
+    try {
+      const mimeType = material.fileType || "application/octet-stream";
+      const blob = base64ToBlob(material.fileDataBase64, mimeType);
+      const blobUrl = URL.createObjectURL(blob);
+
+      if (openedWindow && !openedWindow.closed) {
+        openedWindow.location.href = blobUrl;
+      } else {
+        const anchor = document.createElement("a");
+        anchor.href = blobUrl;
+        anchor.target = "_blank";
+        anchor.rel = "noopener noreferrer";
+        anchor.download =
+          material.fileName || material.title || "material-file";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5 * 60_000);
+    } catch {
+      if (openedWindow && !openedWindow.closed) {
+        openedWindow.close();
+      }
+      setError("Не удалось открыть материал");
+    } finally {
+      setBusyMaterialId("");
+    }
+  };
+
+  const openLessonById = (lessonId: string) => {
+    setSelectedLessonId(lessonId);
+    setLessonFocusMode(true);
+  };
+
+  const openPreviousLesson = () => {
+    if (!previousLesson) {
+      return;
+    }
+    setSelectedLessonId(previousLesson.id);
+  };
+
+  const openNextLesson = () => {
+    if (!nextLesson) {
+      return;
+    }
+    setSelectedLessonId(nextLesson.id);
+  };
+
   return (
     <main className="space-y-4">
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">
+            <h1 className="break-words [overflow-wrap:anywhere] text-2xl font-semibold text-slate-900">
               {course?.title ?? "Курс"}
             </h1>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 break-words [overflow-wrap:anywhere] text-sm text-slate-600">
               {course?.description ?? "Материалы курса"}
             </p>
           </div>
@@ -317,50 +494,60 @@ export default function StudentCourseDetailsPage() {
           <div className="h-[220px] animate-pulse rounded-3xl border border-slate-200 bg-white xl:col-span-2" />
         </section>
       ) : (
-        <section className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Уроки
-            </h2>
-            <div className="mt-3 space-y-2">
-              {lessons.length ? (
-                lessons.map((lesson, index) => {
-                  const selected = lesson.id === selectedLessonId;
-                  const done = completedLessonIds.has(lesson.id);
-                  return (
-                    <button
-                      key={lesson.id}
-                      type="button"
-                      onClick={() => setSelectedLessonId(lesson.id)}
-                      className={
-                        selected
-                          ? "w-full rounded-2xl border border-sky-300 bg-sky-50 px-3 py-2 text-left"
-                          : "w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left hover:bg-slate-50"
-                      }
-                    >
-                      <p className="text-xs text-slate-500">Урок {index + 1}</p>
-                      <p className="mt-0.5 text-sm font-semibold text-slate-900">
-                        {lesson.title}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {done ? "✔ завершен" : "в процессе"}
-                      </p>
-                    </button>
-                  );
-                })
-              ) : (
-                <p className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                  Уроки пока не опубликованы.
-                </p>
-              )}
-            </div>
-          </aside>
+        <section
+          className={
+            lessonFocusMode
+              ? "grid gap-4"
+              : "grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]"
+          }
+        >
+          {!lessonFocusMode ? (
+            <aside className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Уроки
+              </h2>
+              <div className="mt-3 space-y-2">
+                {lessons.length ? (
+                  lessons.map((lesson, index) => {
+                    const selected = lesson.id === selectedLessonId;
+                    const done = completedLessonIds.has(lesson.id);
+                    return (
+                      <button
+                        key={lesson.id}
+                        type="button"
+                        onClick={() => openLessonById(lesson.id)}
+                        className={
+                          selected
+                            ? "w-full rounded-2xl border border-sky-300 bg-sky-50 px-3 py-2 text-left"
+                            : "w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left hover:bg-slate-50"
+                        }
+                      >
+                        <p className="text-xs text-slate-500">
+                          Урок {index + 1}
+                        </p>
+                        <p className="mt-0.5 break-words [overflow-wrap:anywhere] text-sm font-semibold text-slate-900">
+                          {lesson.title}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {done ? "✔ завершен" : "в процессе"}
+                        </p>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                    Уроки пока не опубликованы.
+                  </p>
+                )}
+              </div>
+            </aside>
+          ) : null}
 
           <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             {selectedLesson ? (
               <>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="text-xl font-semibold text-slate-900">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h2 className="min-w-0 break-words text-xl font-semibold text-slate-900">
                     {selectedLesson.title}
                   </h2>
                   <button
@@ -375,7 +562,7 @@ export default function StudentCourseDetailsPage() {
                         !completedLessonIds.has(selectedLesson.id),
                       )
                     }
-                    className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                    className="w-full shrink-0 whitespace-nowrap rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-center text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 sm:w-auto"
                   >
                     {courseCompletedByTeacher
                       ? "Только просмотр"
@@ -387,6 +574,36 @@ export default function StudentCourseDetailsPage() {
                   </button>
                 </div>
 
+                {lessonFocusMode ? (
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <button
+                        type="button"
+                        onClick={openPreviousLesson}
+                        disabled={!previousLesson}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                      >
+                        Предыдущий урок
+                      </button>
+                      <button
+                        type="button"
+                        onClick={openNextLesson}
+                        disabled={!nextLesson}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                      >
+                        Следующий урок
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setLessonFocusMode(false)}
+                      className="w-full rounded-xl border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-100 sm:w-auto"
+                    >
+                      Показать все уроки
+                    </button>
+                  </div>
+                ) : null}
+
                 {courseCompletedByTeacher ? (
                   <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
                     Курс завершен преподавателем. Можно только просматривать
@@ -395,14 +612,28 @@ export default function StudentCourseDetailsPage() {
                 ) : null}
 
                 {shouldShowLessonDescription ? (
-                  <div
-                    className="mt-3 overflow-x-auto break-words text-base leading-relaxed text-slate-700"
-                    dangerouslySetInnerHTML={{
-                      __html: renderTextWithMathTypeTokensHtml(
-                        selectedLesson.description,
-                      ),
-                    }}
-                  />
+                  <div className="prose prose-slate mt-3 max-w-none break-words [overflow-wrap:anywhere] text-base leading-relaxed text-slate-700">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
+                      urlTransform={lessonUrlTransform}
+                      components={{
+                        a: ({ node, ...props }) => (
+                          <a {...props} target="_blank" rel="noreferrer" />
+                        ),
+                        img: ({ node, ...props }) =>
+                          props.src ? (
+                            <img
+                              {...props}
+                              className="my-3 max-h-[420px] w-auto max-w-full rounded-lg border border-slate-200 object-contain"
+                              loading="lazy"
+                            />
+                          ) : null,
+                      }}
+                    >
+                      {normalizeMarkdownMath(selectedLesson.description)}
+                    </ReactMarkdown>
+                  </div>
                 ) : null}
 
                 <div className="mt-6 space-y-4">
@@ -415,7 +646,7 @@ export default function StudentCourseDetailsPage() {
                         key={material.id}
                         className="rounded-2xl border border-slate-200 p-4"
                       >
-                        <p className="text-base font-semibold text-slate-900">
+                        <p className="break-words text-base font-semibold text-slate-900">
                           {material.title}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
@@ -423,29 +654,67 @@ export default function StudentCourseDetailsPage() {
                         </p>
                         {material.text ? (
                           material.type.toLowerCase() === "lecture" ? (
-                            <div
-                              className="mt-3 overflow-x-auto break-words rounded-xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-700"
-                              dangerouslySetInnerHTML={{
-                                __html: renderTextWithMathTypeTokensHtml(
-                                  material.text,
-                                ),
-                              }}
-                            />
+                            <div className="prose prose-slate mt-3 max-w-none break-words [overflow-wrap:anywhere] rounded-xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-700">
+                              <ReactMarkdown
+                                remarkPlugins={[remarkMath]}
+                                rehypePlugins={[rehypeKatex]}
+                                urlTransform={lessonUrlTransform}
+                                components={{
+                                  a: ({ node, ...props }) => (
+                                    <a
+                                      {...props}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    />
+                                  ),
+                                  img: ({ node, ...props }) =>
+                                    props.src ? (
+                                      <img
+                                        {...props}
+                                        className="my-3 max-h-[420px] w-auto max-w-full rounded-lg border border-slate-200 object-contain"
+                                        loading="lazy"
+                                      />
+                                    ) : null,
+                                }}
+                              >
+                                {normalizeMarkdownMath(material.text)}
+                              </ReactMarkdown>
+                            </div>
                           ) : (
-                            <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-700">
+                            <pre className="mt-3 whitespace-pre-wrap break-words [overflow-wrap:anywhere] rounded-xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-700">
                               {material.text}
                             </pre>
                           )
                         ) : null}
                         {material.url ? (
-                          <a
-                            href={material.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-3 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          looksLikeImageUrl(material.url) ? (
+                            <img
+                              src={safeUrlTransform(material.url)}
+                              alt={material.title || "Материал"}
+                              className="mt-3 max-h-[420px] w-auto max-w-full rounded-lg border border-slate-200 object-contain"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <a
+                              href={safeUrlTransform(material.url)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-3 inline-flex w-full shrink-0 justify-center whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 sm:w-auto"
+                            >
+                              Открыть материал
+                            </a>
+                          )
+                        ) : material.fileDataBase64 ? (
+                          <button
+                            type="button"
+                            onClick={() => void openMaterialFile(material)}
+                            disabled={busyMaterialId === material.id}
+                            className="mt-3 inline-flex w-full shrink-0 justify-center whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 sm:w-auto"
                           >
-                            Открыть материал
-                          </a>
+                            {busyMaterialId === material.id
+                              ? "Открытие..."
+                              : "Открыть материал"}
+                          </button>
                         ) : null}
                       </div>
                     ))

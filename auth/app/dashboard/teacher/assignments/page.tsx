@@ -1,13 +1,14 @@
 "use client";
 
+import "katex/dist/katex.min.css";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import rehypeKatex from "rehype-katex";
+import remarkMath from "remark-math";
 
-import {
-  renderFormulaAsMathTypeHtml,
-  renderTextWithMathTypeTokensHtml,
-} from "@/lib/math-render";
+import { renderFormulaAsMathTypeHtml } from "@/lib/math-render";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -33,6 +34,42 @@ type AssignmentAnswerRow = {
   answerCode?: string;
   answerAttachments?: AttachmentItem[];
 };
+
+function normalizeMarkdownMath(input: string) {
+  return input
+    .replace(/\r\n/g, "\n")
+    .replace(/\[\[(MATH|CHEM):([\s\S]*?)\]\]/g, (_match, _type, formula) => {
+      const value = String(formula ?? "").trim();
+      return value ? `\n$$\n${value}\n$$\n` : "";
+    })
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_match, formula) => {
+      const value = String(formula ?? "").trim();
+      return value ? `\n$$\n${value}\n$$\n` : "";
+    })
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_match, formula) => {
+      const value = String(formula ?? "").trim();
+      return value ? `$${value}$` : "";
+    })
+    .replace(/\$\$([^\n$][^\n]*?[^\n$]?)\$\$/g, (_match, formula) => {
+      const value = String(formula ?? "").trim();
+      return value ? `$${value}$` : "";
+    });
+}
+
+function safeUrlTransform(url: string) {
+  if (/^\/uploads\//i.test(url)) {
+    if (typeof window !== "undefined") {
+      return `${window.location.origin}${url}`;
+    }
+    return url;
+  }
+
+  if (/^data:image\//i.test(url)) {
+    return url;
+  }
+
+  return defaultUrlTransform(url);
+}
 
 function formatSize(bytes?: number) {
   const value = Number(bytes) || 0;
@@ -375,14 +412,28 @@ export default function TeacherAssignmentsPage() {
                 <p className="text-xs font-semibold text-slate-500">
                   Текст ответа
                 </p>
-                <div
-                  className="mt-1 overflow-x-auto break-words text-sm text-slate-700"
-                  dangerouslySetInnerHTML={{
-                    __html: renderTextWithMathTypeTokensHtml(
-                      previewRow.answerText,
-                    ),
-                  }}
-                />
+                <div className="prose prose-slate mt-2 max-w-none overflow-x-auto break-words text-sm leading-6 text-slate-700">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
+                    urlTransform={safeUrlTransform}
+                    components={{
+                      a: ({ node, ...props }) => (
+                        <a {...props} target="_blank" rel="noreferrer" />
+                      ),
+                      img: ({ node, ...props }) =>
+                        props.src ? (
+                          <img
+                            {...props}
+                            className="my-3 max-h-[420px] w-auto max-w-full rounded-lg border border-slate-200 object-contain"
+                            loading="lazy"
+                          />
+                        ) : null,
+                    }}
+                  >
+                    {normalizeMarkdownMath(previewRow.answerText)}
+                  </ReactMarkdown>
+                </div>
               </div>
             ) : null}
 

@@ -1,31 +1,15 @@
 ﻿"use client";
 
+import { LessonEditor } from "@/components/lesson-editor";
 import { useToast } from "@/components/ui/toast-provider";
-import {
-  renderFormulaAsMathTypeHtml,
-  renderTextWithMathTypeTokensHtml,
-} from "@/lib/math-render";
-import {
-  ChevronRight,
-  Code2,
-  FlaskConical,
-  GripVertical,
-  Link2,
-  Paperclip,
-  Save,
-  Sigma,
-  Trash2,
-} from "lucide-react";
+import { ChevronRight, GripVertical, Save } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  createElement,
   type FormEvent,
   type KeyboardEvent,
-  type MouseEvent,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 
@@ -687,21 +671,6 @@ function detectMaterialTypeFromMime(mimeType: string) {
   return "file";
 }
 
-function renderFormulaHtml(
-  formula: string,
-  kind: FormulaKind,
-  displayMode = true,
-) {
-  return renderFormulaAsMathTypeHtml(formula, {
-    kind,
-    displayMode,
-  });
-}
-
-function renderInlineMathInText(value: string) {
-  return renderTextWithMathTypeTokensHtml(value);
-}
-
 export default function NewTeacherCoursePage() {
   const toast = useToast();
   const router = useRouter();
@@ -724,6 +693,7 @@ export default function NewTeacherCoursePage() {
     [searchParams],
   );
   const isEditMode = Boolean(editingCourseId);
+  const [draftCourseId, setDraftCourseId] = useState("");
   const [targetLessonId, setTargetLessonId] = useState("");
   const [isLoadingInitial, setIsLoadingInitial] = useState(false);
   const [existingLessons, setExistingLessons] = useState<LessonRecord[]>([]);
@@ -795,38 +765,6 @@ export default function NewTeacherCoursePage() {
 
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const lessonLectureRef = useRef<HTMLTextAreaElement | null>(null);
-  const lessonLectureMathFieldRef = useRef<
-    | (HTMLElement & {
-        value?: string;
-        getValue?: (format?: string) => string;
-      })
-    | null
-  >(null);
-
-  const getMathFieldFormula = (
-    node:
-      | (HTMLElement & {
-          value?: string;
-          getValue?: (format?: string) => string;
-        })
-      | null
-      | undefined,
-  ) => {
-    if (!node) {
-      return "";
-    }
-
-    const unstyled =
-      typeof node.getValue === "function"
-        ? node.getValue("latex-unstyled")
-        : "";
-    if (unstyled) {
-      return unstyled;
-    }
-
-    return node.value ?? "";
-  };
 
   const appendUniqueLesson = (
     lessons: LessonRecord[],
@@ -963,6 +901,7 @@ export default function NewTeacherCoursePage() {
       setShowMaterials(false);
       setShowAssignmentInput(false);
       setTargetLessonId("");
+      setDraftCourseId("");
       setExistingLessons([]);
       setLastSavedAt("");
       setAutosaveState("idle");
@@ -1367,51 +1306,38 @@ export default function NewTeacherCoursePage() {
     setLessonFiles((prev) => prev.filter((_, index) => index !== targetIndex));
   };
 
-  const insertFormulaIntoLessonText = (
-    event: MouseEvent<HTMLButtonElement>,
-  ) => {
-    event.preventDefault();
-
-    const formula =
-      getMathFieldFormula(lessonLectureMathFieldRef.current) ||
-      lessonLectureMathTypeFormula;
-    if (!formula) {
-      return;
-    }
-
-    const formulaToken = `[[MATH:${formula}]]`;
-
-    const target = lessonLectureRef.current;
-    if (!target) {
-      setLessonLecture((previous) => `${previous}${formulaToken}`);
-      return;
-    }
-
-    const start = target.selectionStart ?? lessonLecture.length;
-    const end = target.selectionEnd ?? lessonLecture.length;
-
-    setLessonLecture((previous) => {
-      const nextValue =
-        previous.slice(0, start) + formulaToken + previous.slice(end);
-
-      window.setTimeout(() => {
-        const input = lessonLectureRef.current;
-        if (!input) {
-          return;
-        }
-        const nextCursor = start + formulaToken.length;
-        input.focus();
-        input.setSelectionRange(nextCursor, nextCursor);
-      }, 0);
-
-      return nextValue;
-    });
-  };
-
   const handleLessonFilesChange = (files: FileList | null) => {
     const picked = files ? Array.from(files) : [];
     setError("");
     setLessonFiles((prev) => [...prev, ...picked]);
+  };
+
+  const openLessonFilePreview = (file: File) => {
+    const objectUrl = URL.createObjectURL(file);
+    const openedWindow = window.open(objectUrl, "_blank");
+
+    if (!openedWindow) {
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      anchor.download = file.name;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    }
+
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  };
+
+  const handlePastedImages = (files: File[]) => {
+    if (!files.length) {
+      return;
+    }
+
+    setError("");
+    setShowMaterials(true);
+    setLessonFiles((prev) => [...prev, ...files]);
   };
 
   const goToLessonStep = async () => {
@@ -1483,22 +1409,51 @@ export default function NewTeacherCoursePage() {
     lessonId: string,
     payload: Record<string, unknown>,
   ) => {
-    const response = await fetch(
-      `${API_URL}/api/teacher/courses/${courseId}/lessons/${lessonId}/materials`,
-      {
-        credentials: "include",
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      },
-    );
+    const requestUrl = `${API_URL}/api/teacher/courses/${courseId}/lessons/${lessonId}/materials`;
+    const wait = (ms: number) =>
+      new Promise<void>((resolve) => {
+        window.setTimeout(resolve, ms);
+      });
 
-    const data = (await response.json()) as { message?: string };
-    if (!response.ok) {
-      throw new Error(data.message ?? "Не удалось добавить материал");
+    let lastMessage = "Не удалось добавить материал";
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await fetch(requestUrl, {
+          credentials: "include",
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const data = (await response.json()) as { message?: string };
+        if (response.ok) {
+          return;
+        }
+
+        lastMessage = data.message ?? lastMessage;
+
+        const canRetry =
+          attempt === 0 && (response.status === 404 || response.status >= 500);
+        if (canRetry) {
+          await wait(250);
+          continue;
+        }
+
+        throw new Error(lastMessage);
+      } catch (error) {
+        if (attempt === 0) {
+          await wait(250);
+          continue;
+        }
+
+        throw error instanceof Error ? error : new Error(lastMessage);
+      }
     }
+
+    throw new Error(lastMessage);
   };
 
   const saveWizard = async () => {
@@ -1507,14 +1462,44 @@ export default function NewTeacherCoursePage() {
       return;
     }
 
+    if (!lessonLecture.trim()) {
+      setError("Введите текст урока");
+      return;
+    }
+
     setIsSaving(true);
     setError("");
 
     try {
-      let courseId = editingCourseId;
+      let courseId = isEditMode ? editingCourseId : draftCourseId;
       if (isEditMode) {
         const updateCourseResponse = await fetch(
           `${API_URL}/api/teacher/courses/${editingCourseId}`,
+          {
+            credentials: "include",
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              title: courseTitle.trim(),
+              description: courseDescription.trim(),
+              level: courseLevel,
+            }),
+          },
+        );
+
+        const updateCourseData = (await updateCourseResponse.json()) as {
+          message?: string;
+        };
+
+        if (!updateCourseResponse.ok) {
+          setError(updateCourseData.message ?? "Не удалось обновить курс");
+          return;
+        }
+      } else if (courseId) {
+        const updateCourseResponse = await fetch(
+          `${API_URL}/api/teacher/courses/${courseId}`,
           {
             credentials: "include",
             method: "PUT",
@@ -1570,10 +1555,12 @@ export default function NewTeacherCoursePage() {
           setError("Курс создан, но не получен его идентификатор");
           return;
         }
+
+        setDraftCourseId(courseId);
       }
 
       let lessonId = targetLessonId;
-      if (isEditMode && lessonId) {
+      if (lessonId) {
         const updateLessonResponse = await fetch(
           `${API_URL}/api/teacher/courses/${courseId}/lessons/${lessonId}`,
           {
@@ -1642,66 +1629,6 @@ export default function NewTeacherCoursePage() {
         });
       }
 
-      const mathFormulas = mathFormulaFields
-        .map((item) => item.trim())
-        .filter((item) => item.length > 0);
-
-      for (const [index, formula] of mathFormulas.entries()) {
-        await addMaterialToLesson(courseId, lessonId, {
-          type: "lecture",
-          title: `Формула по математике ${index + 1}`,
-          text: formula,
-        });
-      }
-
-      const mathTypeFormulas = mathTypeFormulaFields
-        .map((item) => item.trim())
-        .filter((item) => item.length > 0);
-
-      for (const [index, formula] of mathTypeFormulas.entries()) {
-        await addMaterialToLesson(courseId, lessonId, {
-          type: "lecture",
-          title: `MathType формула ${index + 1}`,
-          text: formula,
-        });
-      }
-
-      const chemistryFormulas = chemistryFormulaFields
-        .map((item) => item.trim())
-        .filter((item) => item.length > 0);
-
-      for (const [index, formula] of chemistryFormulas.entries()) {
-        await addMaterialToLesson(courseId, lessonId, {
-          type: "lecture",
-          title: `Формула по химии ${index + 1}`,
-          text: formula,
-        });
-      }
-
-      const codeSnippets = codeFields
-        .map((item) => item.trim())
-        .filter((item) => item.length > 0);
-
-      for (const [index, snippet] of codeSnippets.entries()) {
-        await addMaterialToLesson(courseId, lessonId, {
-          type: "lecture",
-          title: `Кодовый блок ${index + 1}`,
-          text: snippet,
-        });
-      }
-
-      const links = lessonLinks
-        .map((item) => item.trim())
-        .filter((item) => item.length > 0);
-
-      for (const [index, link] of links.entries()) {
-        await addMaterialToLesson(courseId, lessonId, {
-          type: "link",
-          title: `Ссылка ${index + 1}`,
-          url: link,
-        });
-      }
-
       for (const file of lessonFiles) {
         const dataBase64 = await fileToBase64(file);
         const payloadFile: LessonUploadFile = {
@@ -1756,6 +1683,7 @@ export default function NewTeacherCoursePage() {
         toast.success("Курс и урок обновлены");
         router.push(`/dashboard/teacher/courses?course=${courseId}&updated=1`);
       } else {
+        setDraftCourseId("");
         window.localStorage.removeItem(draftStorageKey);
         toast.success("Курс и урок созданы");
         router.push("/dashboard/teacher");
@@ -1980,7 +1908,7 @@ export default function NewTeacherCoursePage() {
                         <span className="text-xs font-semibold text-slate-500">
                           {index + 1}
                         </span>
-                        <span className="text-sm text-slate-800">
+                        <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-sm text-slate-800">
                           {lesson.title}
                         </span>
                       </div>
@@ -2009,587 +1937,28 @@ export default function NewTeacherCoursePage() {
               </div>
 
               <div className="space-y-3">
-                <div>
-                  <label className="text-sm text-slate-700">
-                    Название урока
-                  </label>
-                  <input
-                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400"
-                    placeholder="Введите название урока"
-                    value={lessonTitle}
-                    onChange={(event) => setLessonTitle(event.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm text-slate-700">
-                    Основной текст урока
-                  </label>
-                  <textarea
-                    ref={lessonLectureRef}
-                    className="mt-1 min-h-36 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400"
-                    placeholder="Теория, объяснение, шаги и примеры"
-                    value={lessonLecture}
-                    onChange={(event) => setLessonLecture(event.target.value)}
-                  />
-                  <div className="mt-2 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
-                      MathType для основного текста
-                    </p>
-                    <div className="mt-2 rounded-md border border-indigo-300 bg-white p-2">
-                      {createElement("math-field", {
-                        className:
-                          "block min-h-12 w-full rounded-md border border-indigo-200 px-3 py-2 text-indigo-900",
-                        value: lessonLectureMathTypeFormula,
-                        ref: (node: unknown) => {
-                          lessonLectureMathFieldRef.current =
-                            (node as
-                              | (HTMLElement & {
-                                  value?: string;
-                                  getValue?: (format?: string) => string;
-                                })
-                              | null) ?? null;
-                        },
-                        onInput: (event: Event) => {
-                          const target = event.target as EventTarget & {
-                            value?: string;
-                            getValue?: (format?: string) => string;
-                          };
-                          const unstyled =
-                            typeof target.getValue === "function"
-                              ? target.getValue("latex-unstyled")
-                              : "";
-                          setLessonLectureMathTypeFormula(
-                            unstyled || target.value || "",
-                          );
-                        },
-                      })}
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={insertFormulaIntoLessonText}
-                        className="inline-flex items-center gap-2 rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
-                      >
-                        <Sigma className="h-4 w-4" />
-                        Вставить формулу в основной текст
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setLessonLectureMathTypeFormula("")}
-                        className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
-                      >
-                        Очистить формулу
-                      </button>
-                    </div>
-                    <p className="mt-2 text-xs text-indigo-700">
-                      Формула вставляется в место курсора в формате [[MATH:...]]
-                      и рендерится как формула в тексте.
-                    </p>
-                  </div>
-
-                  <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Предпросмотр основного текста
-                    </p>
-                    {lessonLecture.trim() ? (
-                      <div
-                        className="mt-2 overflow-x-auto break-words text-sm text-slate-700"
-                        dangerouslySetInnerHTML={{
-                          __html: renderInlineMathInText(lessonLecture),
-                        }}
-                      />
-                    ) : (
-                      <p className="mt-2 text-sm text-slate-500">
-                        Основной текст пока пуст.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-white p-3">
-                  <p className="mb-2 text-sm text-slate-700">
-                    Специальные поля
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setMathTypeFormulaFields((prev) => [...prev, ""])
-                      }
-                      className="inline-flex items-center gap-2 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm text-indigo-700 hover:bg-indigo-100"
-                    >
-                      <Sigma className="h-4 w-4" />
-                      Поле MathType
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setChemistryFormulaFields((prev) => [...prev, ""])
-                      }
-                      className="inline-flex items-center gap-2 rounded-lg border border-cyan-300 bg-cyan-50 px-3 py-1.5 text-sm text-cyan-700 hover:bg-cyan-100"
-                    >
-                      <FlaskConical className="h-4 w-4" />
-                      Формулы химии
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCodeFields((prev) => [...prev, ""])}
-                      className="inline-flex items-center gap-2 rounded-lg border border-violet-300 bg-violet-50 px-3 py-1.5 text-sm text-violet-700 hover:bg-violet-100"
-                    >
-                      <Code2 className="h-4 w-4" />
-                      Код программирования
-                    </button>
-                  </div>
-                </div>
-
-                {mathFormulaFields.map((item, index) => (
-                  <div
-                    key={`math-formula-${index + 1}`}
-                    className="rounded-xl border border-emerald-300 bg-emerald-50 p-3"
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-emerald-800">
-                        Формула математики {index + 1}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => removeFormulaField("math", index)}
-                        className="rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-100"
-                        aria-label={`Удалить поле формулы математики ${index + 1}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    <div className="mb-3 space-y-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          type="text"
-                          placeholder="Найти формулу"
-                          value={mathFormulaSearches[index] ?? ""}
-                          onChange={(event) =>
-                            setMathFormulaSearches((prev) => ({
-                              ...prev,
-                              [index]: event.target.value,
-                            }))
-                          }
-                          className="h-9 w-full max-w-xs rounded-md border border-emerald-300 bg-white px-3 text-sm text-emerald-900 outline-none transition focus:border-emerald-500"
-                        />
-                        <p className="text-xs text-emerald-700">
-                          Локальный и интернет-поиск по названию
-                        </p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-                            Результаты поиска
-                          </p>
-                          {mathFormulaSearches[index]?.trim().length >= 2 &&
-                          mathInternetLoading[index] ? (
-                            <p className="text-xs text-slate-500">
-                              Ищу в интернете...
-                            </p>
-                          ) : null}
-                        </div>
-                        <div className="grid gap-2 lg:grid-cols-2">
-                          {buildFormulaSearchCards(
-                            MATH_FORMULA_TEMPLATES,
-                            mathInternetResults[index] ?? [],
-                            mathFormulaSearches[index] ?? "",
-                          ).map((card) => (
-                            <div
-                              key={`${card.source}-${card.title}-${card.latex}-${index}`}
-                              className="rounded-xl border border-emerald-300 bg-white p-3"
-                            >
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  insertTemplateToField(
-                                    setMathFormulaFields,
-                                    index,
-                                    {
-                                      title: card.title,
-                                      latex: card.latex,
-                                    },
-                                  )
-                                }
-                                className="w-full text-left"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                                    {card.title}
-                                  </p>
-                                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
-                                    {card.source === "local"
-                                      ? "Локально"
-                                      : "Интернет"}
-                                  </span>
-                                </div>
-                                <div
-                                  className="mt-2 overflow-x-auto text-emerald-950"
-                                  dangerouslySetInnerHTML={{
-                                    __html: renderFormulaHtml(
-                                      card.latex,
-                                      "math",
-                                    ),
-                                  }}
-                                />
-                                {card.snippet ? (
-                                  <p className="mt-2 text-sm text-slate-600">
-                                    {card.snippet}
-                                  </p>
-                                ) : null}
-                              </button>
-                              {card.url ? (
-                                <a
-                                  href={card.url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="mt-3 inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-900"
-                                >
-                                  <Link2 className="h-3.5 w-3.5" />
-                                  Источник
-                                </a>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                        {buildFormulaSearchCards(
-                          MATH_FORMULA_TEMPLATES,
-                          mathInternetResults[index] ?? [],
-                          mathFormulaSearches[index] ?? "",
-                        ).length === 0 ? (
-                          mathInternetErrors[index] ? (
-                            <p className="text-sm text-slate-500">
-                              Внешние формулы временно недоступны. Попробуйте
-                              другой запрос или выберите локальную формулу.
-                            </p>
-                          ) : (
-                            <p className="text-sm text-emerald-600">
-                              По этому запросу формулы не найдены.
-                            </p>
-                          )
-                        ) : null}
-                      </div>
-                    </div>
-                    <textarea
-                      className="min-h-24 w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 font-mono text-sm text-emerald-900"
-                      placeholder="Введите формулу в LaTeX-виде, например: \frac{-b \pm \sqrt{b^2-4ac}}{2a}"
-                      value={item}
-                      onChange={(event) =>
-                        updateFieldByIndex(
-                          setMathFormulaFields,
-                          index,
-                          event.target.value,
-                        )
-                      }
-                    />
-                    <div className="mt-3 rounded-lg border border-emerald-200 bg-white p-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                        Предпросмотр как в учебнике
-                      </p>
-                      {item.trim() ? (
-                        <div
-                          className="mt-2 overflow-x-auto text-slate-900"
-                          dangerouslySetInnerHTML={{
-                            __html: renderFormulaHtml(item, "math"),
-                          }}
-                        />
-                      ) : (
-                        <p className="mt-2 text-sm text-slate-500">
-                          Выберите шаблон или введите формулу вручную.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-
-                {mathTypeFormulaFields.map((item, index) => (
-                  <div
-                    key={`mathtype-formula-${index + 1}`}
-                    className="rounded-xl border border-indigo-300 bg-indigo-50 p-3"
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-indigo-800">
-                        MathType формула {index + 1}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          removeFieldByIndex(setMathTypeFormulaFields, index)
-                        }
-                        className="rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-100"
-                        aria-label={`Удалить поле MathType формулы ${index + 1}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-
-                    <div className="rounded-lg border border-indigo-300 bg-white p-2">
-                      {createElement("math-field", {
-                        className:
-                          "block min-h-12 w-full rounded-md border border-indigo-200 px-3 py-2 text-indigo-900",
-                        value: item,
-                        onInput: (event: Event) => {
-                          const target = event.target as EventTarget & {
-                            value?: string;
-                          };
-                          updateFieldByIndex(
-                            setMathTypeFormulaFields,
-                            index,
-                            target.value ?? "",
-                          );
-                        },
-                      })}
-                      <p className="mt-2 text-xs text-indigo-700">
-                        Визуальный ввод как в MathType. Значение сохраняется в
-                        формате LaTeX.
-                      </p>
-                    </div>
-
-                    <div className="mt-3 rounded-lg border border-indigo-200 bg-white p-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
-                        Предпросмотр как в учебнике
-                      </p>
-                      {item.trim() ? (
-                        <div
-                          className="mt-2 overflow-x-auto text-slate-900"
-                          dangerouslySetInnerHTML={{
-                            __html: renderFormulaHtml(item, "math"),
-                          }}
-                        />
-                      ) : (
-                        <p className="mt-2 text-sm text-slate-500">
-                          Введите формулу через визуальный редактор.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-
-                {chemistryFormulaFields.map((item, index) => (
-                  <div
-                    key={`chem-formula-${index + 1}`}
-                    className="rounded-xl border border-cyan-300 bg-cyan-50 p-3"
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-cyan-800">
-                        Формула химии {index + 1}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => removeFormulaField("chemistry", index)}
-                        className="rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-100"
-                        aria-label={`Удалить поле формулы химии ${index + 1}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    <div className="mb-3 space-y-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          type="text"
-                          placeholder="Найти формулу"
-                          value={chemistryFormulaSearches[index] ?? ""}
-                          onChange={(event) =>
-                            setChemistryFormulaSearches((prev) => ({
-                              ...prev,
-                              [index]: event.target.value,
-                            }))
-                          }
-                          className="h-9 w-full max-w-xs rounded-md border border-cyan-300 bg-white px-3 text-sm text-cyan-900 outline-none transition focus:border-cyan-500"
-                        />
-                        <p className="text-xs text-cyan-700">
-                          Локальный и интернет-поиск по названию
-                        </p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-cyan-700">
-                            Результаты поиска
-                          </p>
-                          {chemistryFormulaSearches[index]?.trim().length >=
-                            2 && chemistryInternetLoading[index] ? (
-                            <p className="text-xs text-slate-500">
-                              Ищу в интернете...
-                            </p>
-                          ) : null}
-                        </div>
-                        <div className="grid gap-2 lg:grid-cols-2">
-                          {buildFormulaSearchCards(
-                            CHEMISTRY_FORMULA_TEMPLATES,
-                            chemistryInternetResults[index] ?? [],
-                            chemistryFormulaSearches[index] ?? "",
-                          ).map((card) => (
-                            <div
-                              key={`${card.source}-${card.title}-${card.latex}-${index}`}
-                              className="rounded-xl border border-cyan-300 bg-white p-3"
-                            >
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  insertTemplateToField(
-                                    setChemistryFormulaFields,
-                                    index,
-                                    {
-                                      title: card.title,
-                                      latex: card.latex,
-                                    },
-                                  )
-                                }
-                                className="w-full text-left"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <p className="text-xs font-semibold uppercase tracking-wide text-cyan-700">
-                                    {card.title}
-                                  </p>
-                                  <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-700">
-                                    {card.source === "local"
-                                      ? "Локально"
-                                      : "Интернет"}
-                                  </span>
-                                </div>
-                                <div
-                                  className="mt-2 overflow-x-auto text-cyan-950"
-                                  dangerouslySetInnerHTML={{
-                                    __html: renderFormulaHtml(
-                                      card.latex,
-                                      "chemistry",
-                                    ),
-                                  }}
-                                />
-                                {card.snippet ? (
-                                  <p className="mt-2 text-sm text-slate-600">
-                                    {card.snippet}
-                                  </p>
-                                ) : null}
-                              </button>
-                              {card.url ? (
-                                <a
-                                  href={card.url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="mt-3 inline-flex items-center gap-1 text-xs text-cyan-700 hover:text-cyan-900"
-                                >
-                                  <Link2 className="h-3.5 w-3.5" />
-                                  Источник
-                                </a>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                        {buildFormulaSearchCards(
-                          CHEMISTRY_FORMULA_TEMPLATES,
-                          chemistryInternetResults[index] ?? [],
-                          chemistryFormulaSearches[index] ?? "",
-                        ).length === 0 ? (
-                          chemistryInternetErrors[index] ? (
-                            <p className="text-sm text-slate-500">
-                              Внешние формулы временно недоступны. Попробуйте
-                              другой запрос или выберите локальную формулу.
-                            </p>
-                          ) : (
-                            <p className="text-sm text-cyan-600">
-                              По этому запросу формулы не найдены.
-                            </p>
-                          )
-                        ) : null}
-                      </div>
-                    </div>
-                    <textarea
-                      className="min-h-24 w-full rounded-lg border border-cyan-300 bg-white px-3 py-2 font-mono text-sm text-cyan-900"
-                      placeholder="Введите формулу, например: \ce{H2SO4 + 2NaOH -> Na2SO4 + 2H2O}"
-                      value={item}
-                      onChange={(event) =>
-                        updateFieldByIndex(
-                          setChemistryFormulaFields,
-                          index,
-                          event.target.value,
-                        )
-                      }
-                    />
-                    <div className="mt-3 rounded-lg border border-cyan-200 bg-white p-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-cyan-700">
-                        Предпросмотр как в учебнике
-                      </p>
-                      {item.trim() ? (
-                        <div
-                          className="mt-2 overflow-x-auto text-slate-900"
-                          dangerouslySetInnerHTML={{
-                            __html: renderFormulaHtml(item, "chemistry"),
-                          }}
-                        />
-                      ) : (
-                        <p className="mt-2 text-sm text-slate-500">
-                          Выберите шаблон или введите формулу вручную.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-
-                {codeFields.map((item, index) => (
-                  <div
-                    key={`code-field-${index + 1}`}
-                    className="rounded-xl border border-violet-300 bg-violet-50 p-3"
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-violet-800">
-                        Кодовый блок {index + 1}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => removeFieldByIndex(setCodeFields, index)}
-                        className="rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-100"
-                        aria-label={`Удалить кодовый блок ${index + 1}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    <textarea
-                      className="min-h-28 w-full rounded-lg border border-violet-300 bg-white px-3 py-2 font-mono text-sm text-violet-900"
-                      placeholder="Введите код"
-                      value={item}
-                      onChange={(event) =>
-                        updateFieldByIndex(
-                          setCodeFields,
-                          index,
-                          event.target.value,
-                        )
-                      }
-                    />
-                  </div>
-                ))}
+                <LessonEditor
+                  lessonTitle={lessonTitle}
+                  lessonContent={lessonLecture}
+                  onLessonTitleChange={setLessonTitle}
+                  onLessonContentChange={setLessonLecture}
+                  onPastedImages={handlePastedImages}
+                />
 
                 <div className="rounded-xl border border-slate-200 bg-white p-3">
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => setShowMaterials((prev) => !prev)}
-                      className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm text-amber-700 hover:bg-amber-100"
+                      className="w-full whitespace-nowrap rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm text-amber-700 hover:bg-amber-100 sm:w-auto"
                     >
-                      <Paperclip className="h-4 w-4" />
                       Добавить материалы
                     </button>
 
                     <button
                       type="button"
-                      onClick={() => {
-                        setShowLinks(true);
-                        setLessonLinks((prev) => [...prev, ""]);
-                      }}
-                      className="inline-flex items-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm text-sky-700 hover:bg-sky-100"
-                    >
-                      <Link2 className="h-4 w-4" />
-                      Добавить ссылки
-                    </button>
-
-                    <button
-                      type="button"
                       onClick={() => setShowAssignmentInput((prev) => !prev)}
-                      className="rounded-lg border border-lime-300 bg-lime-50 px-3 py-1.5 text-sm text-lime-700 hover:bg-lime-100"
+                      className="w-full whitespace-nowrap rounded-lg border border-lime-300 bg-lime-50 px-3 py-1.5 text-sm text-lime-700 hover:bg-lime-100 sm:w-auto"
                     >
                       Добавить задание
                     </button>
@@ -2615,13 +1984,20 @@ export default function NewTeacherCoursePage() {
                           {lessonFiles.map((file, index) => (
                             <li
                               key={`${file.name}-${file.size}-${index}`}
-                              className="flex items-center justify-between gap-2"
+                              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2"
                             >
-                              <span>{file.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => openLessonFilePreview(file)}
+                                className="min-w-0 truncate text-left text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900"
+                                title="Открыть материал"
+                              >
+                                {file.name}
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => removeLessonFile(index)}
-                                className="rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-100"
+                                className="shrink-0 whitespace-nowrap rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-100"
                               >
                                 Удалить
                               </button>
@@ -2629,33 +2005,6 @@ export default function NewTeacherCoursePage() {
                           ))}
                         </ul>
                       ) : null}
-                    </div>
-                  ) : null}
-
-                  {showLinks ? (
-                    <div className="mt-3 space-y-2 rounded-lg border border-sky-300 bg-sky-50/40 p-3">
-                      {lessonLinks.map((link, index) => (
-                        <div
-                          key={`new-link-${index + 1}`}
-                          className="flex gap-2"
-                        >
-                          <input
-                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-                            placeholder={`Ссылка ${index + 1}`}
-                            value={link}
-                            onChange={(event) =>
-                              updateLessonLink(index, event.target.value)
-                            }
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeLessonLink(index)}
-                            className="rounded-md border border-rose-300 px-3 py-2 text-xs text-rose-700 hover:bg-rose-100"
-                          >
-                            Удалить
-                          </button>
-                        </div>
-                      ))}
                     </div>
                   ) : null}
 
