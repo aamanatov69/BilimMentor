@@ -588,14 +588,14 @@ export default async function IndexPage() {
                 href="/register"
                 className="product-glow w-full rounded-xl bg-white px-7 py-3 text-base font-extrabold text-blue-700 shadow-[0_18px_36px_rgba(255,255,255,0.24)] transition duration-300 hover:-translate-y-1 hover:bg-blue-50 sm:w-auto"
               >
-                Начать бесплатно
+                Начать сейчас
               </Link>
-              <Link
+              {/* <Link
                 href="/login"
                 className="w-full rounded-xl border border-white/40 bg-white/10 px-7 py-3 text-base font-semibold text-white transition duration-300 hover:-translate-y-1 hover:bg-white/20 sm:w-auto"
               >
                 Войти
-              </Link>
+              </Link> */}
             </div>
           </div>
         </section>
