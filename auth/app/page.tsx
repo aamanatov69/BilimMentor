@@ -581,8 +581,7 @@ export default async function IndexPage() {
               Присоединяйтесь уже сегодня
             </h2>
             <p className="mt-3 text-sm text-blue-100 sm:text-base">
-              Более 500 студентов уже обучаются на BilimMentor. Начните свой
-              путь прямо сейчас.
+              Начните свой путь прямо сейчас.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
               <Link
