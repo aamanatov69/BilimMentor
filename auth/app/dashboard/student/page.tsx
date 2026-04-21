@@ -1,5 +1,6 @@
 "use client";
 
+import { renderTextWithMathTypeTokensHtml } from "@/lib/math-render";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -201,9 +202,12 @@ export default function StudentDashboardPage() {
                     key={item.id}
                     className="rounded-2xl border border-slate-200 p-3"
                   >
-                    <p className="text-sm font-semibold text-slate-900">
-                      {item.title}
-                    </p>
+                    <div
+                      className="text-sm font-semibold text-slate-900"
+                      dangerouslySetInnerHTML={{
+                        __html: renderTextWithMathTypeTokensHtml(item.title),
+                      }}
+                    />
                     <p className="mt-0.5 text-xs text-slate-600">
                       {item.course}
                     </p>

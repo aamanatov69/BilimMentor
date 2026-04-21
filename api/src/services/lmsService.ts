@@ -3697,7 +3697,7 @@ export async function studentDashboardOverview(userId: string | undefined) {
 
     return {
       id: item.id,
-      title: sanitizeStudentFacingText(item.title),
+      title: item.title,
       course: item.course.title,
       dueDate: dueAt ? dueAt.toISOString() : null,
       status: ownSubmission ? "Enabled" : "Disabled",
