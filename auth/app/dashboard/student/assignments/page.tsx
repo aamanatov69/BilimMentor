@@ -488,7 +488,9 @@ export default function StudentAssignmentsPage() {
                           ),
                         }}
                       >
-                        {normalizeMarkdownMath(activeAssignment.description)}
+                        {normalizeMarkdownMath(
+                          activeAssignment.description ?? "",
+                        )}
                       </ReactMarkdown>
                     </div>
                   </div>
