@@ -816,7 +816,9 @@ export default function StudentCourseDetailsPage() {
                               ),
                             }}
                           >
-                            {normalizeMarkdownMath(assignment.description)}
+                            {normalizeMarkdownMath(
+                              assignment.description ?? "",
+                            )}
                           </ReactMarkdown>
                         </div>
                       ) : null}
