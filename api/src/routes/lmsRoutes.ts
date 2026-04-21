@@ -304,6 +304,18 @@ lmsRoutes.delete(
   requireRole([UserRole.admin]),
   asyncHandler(lmsController.adminDeleteLessonMaterial),
 );
+lmsRoutes.put(
+  "/api/admin/assignments/:id",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminUpdateAssignment),
+);
+lmsRoutes.delete(
+  "/api/admin/assignments/:id",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminDeleteAssignment),
+);
 lmsRoutes.delete(
   "/api/admin/courses/:id",
   verifyToken,
@@ -376,6 +388,18 @@ lmsRoutes.patch(
   verifyToken,
   requireRole([UserRole.teacher]),
   asyncHandler(lmsController.teacherUpdateAssignmentDeadline),
+);
+lmsRoutes.put(
+  "/api/teacher/assignments/:id",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherUpdateAssignment),
+);
+lmsRoutes.delete(
+  "/api/teacher/assignments/:id",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherDeleteAssignment),
 );
 lmsRoutes.post(
   "/api/teacher/courses/:id/materials",

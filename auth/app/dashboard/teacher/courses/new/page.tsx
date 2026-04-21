@@ -45,6 +45,15 @@ type ExistingLessonMaterial = {
   canDelete: boolean;
 };
 
+type ExistingLessonAssignment = {
+  id: string;
+  title: string;
+  description: string;
+  dueAt: string;
+  lessonId: string;
+  submissions: number;
+};
+
 type TeacherCourseDetailsResponse = {
   course?: {
     id?: string;
@@ -53,6 +62,14 @@ type TeacherCourseDetailsResponse = {
     level?: CourseLevel;
     modules?: Array<Record<string, unknown>>;
   };
+  assignments?: Array<{
+    id?: string;
+    title?: string;
+    description?: string | null;
+    dueAt?: string | null;
+    lessonId?: string | null;
+    submissions?: number;
+  }>;
   message?: string;
 };
 
@@ -732,6 +749,21 @@ function buildAssignmentTitleFromText(value: string) {
   return normalized.slice(0, 120);
 }
 
+function toDatetimeLocalValue(isoValue: string | null | undefined) {
+  if (!isoValue) return "";
+
+  const date = new Date(isoValue);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
 export default function NewTeacherCoursePage() {
   const toast = useToast();
   const router = useRouter();
@@ -796,6 +828,9 @@ export default function NewTeacherCoursePage() {
   const [existingLessonMaterials, setExistingLessonMaterials] = useState<
     ExistingLessonMaterial[]
   >([]);
+  const [existingLessonAssignments, setExistingLessonAssignments] = useState<
+    ExistingLessonAssignment[]
+  >([]);
   const [assignmentText, setAssignmentText] = useState("");
   const [assignmentDueAt, setAssignmentDueAt] = useState("");
   const [showLinks, setShowLinks] = useState(false);
@@ -831,6 +866,8 @@ export default function NewTeacherCoursePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [deletingExistingMaterialId, setDeletingExistingMaterialId] =
     useState("");
+  const [editingAssignmentId, setEditingAssignmentId] = useState("");
+  const [deletingAssignmentId, setDeletingAssignmentId] = useState("");
 
   const appendUniqueLesson = (
     lessons: LessonRecord[],
@@ -863,6 +900,24 @@ export default function NewTeacherCoursePage() {
         } satisfies ExistingLessonMaterial;
       })
       .filter((material) => material.type.toLowerCase() !== "lecture");
+  };
+
+  const mapExistingLessonAssignments = (
+    assignments: TeacherCourseDetailsResponse["assignments"],
+    lessonId: string,
+  ) => {
+    const list = Array.isArray(assignments) ? assignments : [];
+    return list
+      .filter((item) => String(item?.lessonId ?? "") === lessonId)
+      .map((item) => ({
+        id: String(item?.id ?? ""),
+        title: String(item?.title ?? ""),
+        description: String(item?.description ?? ""),
+        dueAt: String(item?.dueAt ?? ""),
+        lessonId: String(item?.lessonId ?? ""),
+        submissions: Number(item?.submissions ?? 0),
+      }))
+      .filter((item) => item.id.length > 0);
   };
 
   const mapLessons = (modules: Array<Record<string, unknown>> | undefined) => {
@@ -941,6 +996,9 @@ export default function NewTeacherCoursePage() {
             setLessonTitle(selectedLesson.title);
             setLessonLecture(selectedLesson.description);
             setLessonFiles([]);
+            setEditingAssignmentId("");
+            setAssignmentText("");
+            setAssignmentDueAt("");
 
             const existingLinks = selectedLesson.materials
               .filter((material) => String(material.type ?? "") === "link")
@@ -950,11 +1008,17 @@ export default function NewTeacherCoursePage() {
             const existingMaterials = mapExistingLessonMaterials(
               selectedLesson.materials,
             );
+            const existingAssignments = mapExistingLessonAssignments(
+              data.assignments,
+              selectedLesson.id,
+            );
 
             setLessonLinks(existingLinks);
             setShowLinks(existingLinks.length > 0);
             setExistingLessonMaterials(existingMaterials);
+            setExistingLessonAssignments(existingAssignments);
             setShowMaterials(existingMaterials.length > 0);
+            setShowAssignmentInput(existingAssignments.length > 0);
           }
 
           setStep("lesson");
@@ -1002,6 +1066,9 @@ export default function NewTeacherCoursePage() {
       setDraftCourseId("");
       setExistingLessons([]);
       setExistingLessonMaterials([]);
+      setExistingLessonAssignments([]);
+      setEditingAssignmentId("");
+      setDeletingAssignmentId("");
       setLastSavedAt("");
       setAutosaveState("idle");
       return;
@@ -1447,6 +1514,52 @@ export default function NewTeacherCoursePage() {
     }
   };
 
+  const beginEditExistingAssignment = (
+    assignment: ExistingLessonAssignment,
+  ) => {
+    setEditingAssignmentId(assignment.id);
+    setAssignmentText(assignment.description || assignment.title);
+    setAssignmentDueAt(toDatetimeLocalValue(assignment.dueAt));
+    setShowAssignmentInput(true);
+  };
+
+  const removeExistingAssignment = async (assignmentId: string) => {
+    setDeletingAssignmentId(assignmentId);
+    setError("");
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/teacher/assignments/${assignmentId}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        },
+      );
+
+      const data = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        setError(data.message ?? "Не удалось удалить задание");
+        toast.error(data.message ?? "Не удалось удалить задание");
+        return;
+      }
+
+      setExistingLessonAssignments((prev) =>
+        prev.filter((item) => item.id !== assignmentId),
+      );
+      if (editingAssignmentId === assignmentId) {
+        setEditingAssignmentId("");
+        setAssignmentText("");
+        setAssignmentDueAt("");
+      }
+      toast.success("Задание удалено");
+    } catch {
+      setError("Ошибка сети при удалении задания");
+      toast.error("Ошибка сети при удалении задания");
+    } finally {
+      setDeletingAssignmentId("");
+    }
+  };
+
   const handleLessonFilesChange = (files: FileList | null) => {
     const picked = files ? Array.from(files) : [];
     setError("");
@@ -1791,22 +1904,24 @@ export default function NewTeacherCoursePage() {
           throw new Error("Укажите дедлайн для задания");
         }
 
-        const assignmentResponse = await fetch(
-          `${API_URL}/api/teacher/courses/${courseId}/assignments`,
-          {
-            credentials: "include",
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              title: buildAssignmentTitleFromText(assignmentText),
-              description: assignmentText.trim(),
-              lessonId,
-              dueAt: assignmentDueAt,
-            }),
+        const assignmentRequestUrl = editingAssignmentId
+          ? `${API_URL}/api/teacher/assignments/${editingAssignmentId}`
+          : `${API_URL}/api/teacher/courses/${courseId}/assignments`;
+        const assignmentMethod = editingAssignmentId ? "PUT" : "POST";
+
+        const assignmentResponse = await fetch(assignmentRequestUrl, {
+          credentials: "include",
+          method: assignmentMethod,
+          headers: {
+            "Content-Type": "application/json",
           },
-        );
+          body: JSON.stringify({
+            title: buildAssignmentTitleFromText(assignmentText),
+            description: assignmentText.trim(),
+            lessonId,
+            dueAt: assignmentDueAt,
+          }),
+        });
 
         const assignmentData = (await assignmentResponse.json()) as {
           message?: string;
@@ -2202,6 +2317,53 @@ export default function NewTeacherCoursePage() {
 
                   {showAssignmentInput ? (
                     <div className="mt-3 rounded-lg border border-lime-300 bg-lime-50/40 p-3">
+                      {existingLessonAssignments.length > 0 ? (
+                        <ul className="mb-3 space-y-2 rounded-lg border border-lime-200 bg-white p-2 text-sm text-slate-700">
+                          {existingLessonAssignments.map((assignment) => (
+                            <li
+                              key={assignment.id}
+                              className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate font-medium">
+                                  {assignment.title}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {assignment.dueAt
+                                    ? `Срок: ${new Date(assignment.dueAt).toLocaleString("ru-RU")}`
+                                    : "Срок: не указан"}
+                                </p>
+                              </div>
+                              <div className="flex shrink-0 gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    beginEditExistingAssignment(assignment)
+                                  }
+                                  className="whitespace-nowrap rounded-md border border-blue-300 px-2 py-1 text-xs text-blue-700 hover:bg-blue-50"
+                                >
+                                  Редактировать
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={
+                                    deletingAssignmentId === assignment.id
+                                  }
+                                  onClick={() =>
+                                    void removeExistingAssignment(assignment.id)
+                                  }
+                                  className="whitespace-nowrap rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                                >
+                                  {deletingAssignmentId === assignment.id
+                                    ? "Удаление..."
+                                    : "Удалить"}
+                                </button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+
                       <textarea
                         className="min-h-20 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                         placeholder="Текст задания"
@@ -2227,6 +2389,22 @@ export default function NewTeacherCoursePage() {
                           }
                         />
                       </div>
+
+                      {editingAssignmentId ? (
+                        <div className="mt-2 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingAssignmentId("");
+                              setAssignmentText("");
+                              setAssignmentDueAt("");
+                            }}
+                            className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                          >
+                            Отменить редактирование
+                          </button>
+                        </div>
+                      ) : null}
 
                       {assignmentText.trim() ? (
                         <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">

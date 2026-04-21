@@ -24,6 +24,15 @@ type LessonRow = {
   materials: LessonMaterialRow[];
 };
 
+type AssignmentRow = {
+  id: string;
+  title: string;
+  description: string;
+  lessonId: string;
+  lessonTitle: string;
+  dueAtLocal: string;
+};
+
 type CourseDetails = {
   id: string;
   title: string;
@@ -33,6 +42,7 @@ type CourseDetails = {
   isPublished: boolean;
   createdAt: string;
   modules?: Array<Record<string, unknown>>;
+  assignments?: Array<Record<string, unknown>>;
 };
 
 function getCourseLevelLabel(level: CourseLevel) {
@@ -103,12 +113,37 @@ function parseLessons(modules: Array<Record<string, unknown>> | undefined) {
     .filter((item) => item.id.length > 0);
 }
 
+function parseAssignments(
+  assignmentsRaw: Array<Record<string, unknown>> | undefined,
+  lessons: LessonRow[],
+) {
+  const rows = Array.isArray(assignmentsRaw) ? assignmentsRaw : [];
+  return rows
+    .map((item) => {
+      const id = String(item.id ?? "").trim();
+      const lessonId = String(item.lessonId ?? "").trim();
+      const lessonTitle =
+        lessons.find((lesson) => lesson.id === lessonId)?.title || "Без урока";
+
+      return {
+        id,
+        title: String(item.title ?? ""),
+        description: String(item.description ?? ""),
+        lessonId,
+        lessonTitle,
+        dueAtLocal: toDatetimeLocalValue(String(item.dueAt ?? "")),
+      } satisfies AssignmentRow;
+    })
+    .filter((item) => item.id.length > 0);
+}
+
 export default function AdminEditCoursePage() {
   const params = useParams();
   const courseId = String(params.id ?? "");
 
   const [course, setCourse] = useState<CourseDetails | null>(null);
   const [lessons, setLessons] = useState<LessonRow[]>([]);
+  const [assignments, setAssignments] = useState<AssignmentRow[]>([]);
 
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("General");
@@ -125,6 +160,8 @@ export default function AdminEditCoursePage() {
   const [savingLessonId, setSavingLessonId] = useState("");
   const [deletingLessonId, setDeletingLessonId] = useState("");
   const [deletingMaterialKey, setDeletingMaterialKey] = useState("");
+  const [savingAssignmentId, setSavingAssignmentId] = useState("");
+  const [deletingAssignmentId, setDeletingAssignmentId] = useState("");
   const [creatingLesson, setCreatingLesson] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -154,7 +191,9 @@ export default function AdminEditCoursePage() {
       }
 
       setCourse(data.course);
-      setLessons(parseLessons(data.course.modules));
+      const parsedLessons = parseLessons(data.course.modules);
+      setLessons(parsedLessons);
+      setAssignments(parseAssignments(data.course.assignments, parsedLessons));
       setTitle(data.course.title);
       setCategory(data.course.category || "General");
       setDescription(data.course.description || "");
@@ -343,6 +382,102 @@ export default function AdminEditCoursePage() {
       setError("Ошибка сети при удалении материала");
     } finally {
       setDeletingMaterialKey("");
+    }
+  };
+
+  const updateAssignmentField = (
+    assignmentId: string,
+    field: "title" | "description" | "dueAtLocal" | "lessonId",
+    value: string,
+  ) => {
+    setAssignments((previous) =>
+      previous.map((assignment) => {
+        if (assignment.id !== assignmentId) {
+          return assignment;
+        }
+
+        if (field === "lessonId") {
+          const lessonTitle =
+            lessons.find((lesson) => lesson.id === value)?.title || "Без урока";
+          return { ...assignment, lessonId: value, lessonTitle };
+        }
+
+        return { ...assignment, [field]: value };
+      }),
+    );
+  };
+
+  const onSaveAssignment = async (assignment: AssignmentRow) => {
+    if (!assignment.title.trim()) {
+      setError("Название задания не может быть пустым");
+      return;
+    }
+
+    setSavingAssignmentId(assignment.id);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/admin/assignments/${assignment.id}`,
+        {
+          method: "PUT",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: assignment.title.trim(),
+            description: assignment.description,
+            lessonId: assignment.lessonId,
+            dueAt: assignment.dueAtLocal
+              ? new Date(assignment.dueAtLocal).toISOString()
+              : null,
+          }),
+        },
+      );
+
+      const data = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        setError(data.message ?? "Не удалось обновить задание");
+        return;
+      }
+
+      setMessage("Задание обновлено");
+      await loadCourse();
+    } catch {
+      setError("Ошибка сети при сохранении задания");
+    } finally {
+      setSavingAssignmentId("");
+    }
+  };
+
+  const onDeleteAssignment = async (assignmentId: string) => {
+    setDeletingAssignmentId(assignmentId);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/admin/assignments/${assignmentId}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        },
+      );
+
+      const data = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        setError(data.message ?? "Не удалось удалить задание");
+        return;
+      }
+
+      setMessage("Задание удалено");
+      await loadCourse();
+    } catch {
+      setError("Ошибка сети при удалении задания");
+    } finally {
+      setDeletingAssignmentId("");
     }
   };
 
@@ -668,6 +803,112 @@ export default function AdminEditCoursePage() {
                         {deletingLessonId === lesson.id
                           ? "Удаление..."
                           : "Удалить урок"}
+                      </button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+            <p className="text-sm font-semibold text-slate-800">
+              Задания курса
+            </p>
+
+            <div className="mt-3 space-y-3">
+              {assignments.length === 0 ? (
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                  Заданий пока нет.
+                </p>
+              ) : (
+                assignments.map((assignment) => (
+                  <article
+                    key={assignment.id}
+                    className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                  >
+                    <input
+                      value={assignment.title}
+                      onChange={(event) =>
+                        updateAssignmentField(
+                          assignment.id,
+                          "title",
+                          event.target.value,
+                        )
+                      }
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                    />
+                    <textarea
+                      value={assignment.description}
+                      onChange={(event) =>
+                        updateAssignmentField(
+                          assignment.id,
+                          "description",
+                          event.target.value,
+                        )
+                      }
+                      className="mt-2 min-h-20 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                    />
+                    <div className="mt-2 grid gap-2 md:grid-cols-2">
+                      <div>
+                        <label className="text-xs text-slate-600">Урок</label>
+                        <select
+                          value={assignment.lessonId}
+                          onChange={(event) =>
+                            updateAssignmentField(
+                              assignment.id,
+                              "lessonId",
+                              event.target.value,
+                            )
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                        >
+                          {lessons.map((lesson) => (
+                            <option key={lesson.id} value={lesson.id}>
+                              {lesson.title}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-600">
+                          Дедлайн
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={assignment.dueAtLocal}
+                          onChange={(event) =>
+                            updateAssignmentField(
+                              assignment.id,
+                              "dueAtLocal",
+                              event.target.value,
+                            )
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={savingAssignmentId === assignment.id}
+                        onClick={() => void onSaveAssignment(assignment)}
+                        className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+                      >
+                        {savingAssignmentId === assignment.id
+                          ? "Сохранение..."
+                          : "Сохранить задание"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deletingAssignmentId === assignment.id}
+                        onClick={() => void onDeleteAssignment(assignment.id)}
+                        className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                      >
+                        {deletingAssignmentId === assignment.id
+                          ? "Удаление..."
+                          : "Удалить задание"}
                       </button>
                     </div>
                   </article>

@@ -273,6 +273,21 @@ export const lmsController = {
     res.json(result);
   },
 
+  adminUpdateAssignment: async (req: AuthenticatedRequest, res: Response) => {
+    const result = await lmsService.adminUpdateAssignment(
+      String(req.params.id),
+      req.body,
+    );
+    res.json(result);
+  },
+
+  adminDeleteAssignment: async (req: AuthenticatedRequest, res: Response) => {
+    const result = await lmsService.adminDeleteAssignment(
+      String(req.params.id),
+    );
+    res.json(result);
+  },
+
   adminDeleteCourse: async (req: AuthenticatedRequest, res: Response) => {
     const result = await lmsService.adminDeleteCourse(String(req.params.id));
     res.json(result);
@@ -460,6 +475,23 @@ export const lmsController = {
       req.user?.sub,
       String(req.params.id),
       req.body?.dueAt,
+    );
+    res.json(result);
+  },
+
+  teacherUpdateAssignment: async (req: AuthenticatedRequest, res: Response) => {
+    const result = await lmsService.teacherUpdateAssignment(
+      req.user?.sub,
+      String(req.params.id),
+      req.body,
+    );
+    res.json(result);
+  },
+
+  teacherDeleteAssignment: async (req: AuthenticatedRequest, res: Response) => {
+    const result = await lmsService.teacherDeleteAssignment(
+      req.user?.sub,
+      String(req.params.id),
     );
     res.json(result);
   },

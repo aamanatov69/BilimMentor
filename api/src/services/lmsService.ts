@@ -1548,6 +1548,9 @@ export async function adminCourseDetails(courseId: string) {
           email: true,
         },
       },
+      assignments: {
+        orderBy: { createdAt: "desc" },
+      },
     },
   });
 
@@ -1559,6 +1562,87 @@ export async function adminCourseDetails(courseId: string) {
       modules: readModules(course.modules),
     },
   };
+}
+
+export async function adminUpdateAssignment(
+  assignmentId: string,
+  input: {
+    title?: string;
+    description?: string;
+    dueAt?: string | null;
+    lessonId?: string;
+  },
+) {
+  const assignment = await lmsRepository.prisma.assignment.findUnique({
+    where: { id: assignmentId },
+    include: { course: true },
+  });
+  ensure(assignment, 404, "Ресурс не найден");
+
+  const hasTitle = typeof input.title === "string";
+  const hasDescription = typeof input.description === "string";
+  const hasDueAt = typeof input.dueAt === "string" || input.dueAt === null;
+  const hasLessonId = typeof input.lessonId === "string";
+
+  ensure(
+    hasTitle || hasDescription || hasDueAt || hasLessonId,
+    400,
+    "Некорректный запрос",
+  );
+
+  if (hasTitle) {
+    ensure(input.title?.trim(), 400, "Некорректный запрос");
+  }
+
+  let nextLessonId: string | null | undefined;
+  if (hasLessonId) {
+    const normalizedLessonId = input.lessonId?.trim() ?? "";
+    ensure(normalizedLessonId, 400, "Некорректный запрос");
+
+    const modules = asModuleRecordArray(assignment.course.modules);
+    const lessonIndex = findLessonIndex(modules, normalizedLessonId);
+    ensure(lessonIndex >= 0, 400, "Некорректный запрос");
+    nextLessonId = normalizedLessonId;
+  }
+
+  let parsedDueAt: Date | null | undefined;
+  if (hasDueAt) {
+    const dueAtRaw = typeof input.dueAt === "string" ? input.dueAt.trim() : "";
+    if (!dueAtRaw) {
+      parsedDueAt = null;
+    } else {
+      const dueAtValue = new Date(dueAtRaw);
+      ensure(!Number.isNaN(dueAtValue.getTime()), 400, "Операция недоступна");
+      parsedDueAt = dueAtValue;
+    }
+  }
+
+  const updated = await lmsRepository.prisma.assignment.update({
+    where: { id: assignmentId },
+    data: {
+      title: hasTitle ? input.title?.trim() : undefined,
+      description: hasDescription
+        ? input.description?.trim() || null
+        : undefined,
+      dueAt: hasDueAt ? parsedDueAt : undefined,
+      lessonId: hasLessonId ? nextLessonId : undefined,
+    },
+  });
+
+  return { message: "Успешно", assignment: updated };
+}
+
+export async function adminDeleteAssignment(assignmentId: string) {
+  const assignment = await lmsRepository.prisma.assignment.findUnique({
+    where: { id: assignmentId },
+  });
+  ensure(assignment, 404, "Ресурс не найден");
+
+  await lmsRepository.prisma.assignment.delete({
+    where: { id: assignmentId },
+  });
+
+  return { message: "Успешно", assignment };
 }
 
 export async function adminCreateLesson(
@@ -3020,6 +3104,108 @@ export async function teacherUpdateAssignmentDeadline(
   });
 
   return { message: "Успешно", assignment: updated };
+}
+
+export async function teacherUpdateAssignment(
+  userId: string | undefined,
+  assignmentId: string,
+  input: {
+    title?: string;
+    description?: string;
+    dueAt?: string | null;
+    lessonId?: string;
+  },
+) {
+  const currentUser = await requireCurrentUser(userId);
+  ensure(currentUser.role === UserRole.teacher, 403, "Доступ запрещен");
+
+  const assignment = await lmsRepository.prisma.assignment.findUnique({
+    where: { id: assignmentId },
+    include: { course: true },
+  });
+  ensure(assignment, 404, "Ресурс не найден");
+  ensure(
+    assignment.course.teacherId === currentUser.id,
+    403,
+    "Операция недоступна",
+  );
+
+  const hasTitle = typeof input.title === "string";
+  const hasDescription = typeof input.description === "string";
+  const hasDueAt = typeof input.dueAt === "string" || input.dueAt === null;
+  const hasLessonId = typeof input.lessonId === "string";
+
+  ensure(
+    hasTitle || hasDescription || hasDueAt || hasLessonId,
+    400,
+    "Некорректный запрос",
+  );
+
+  if (hasTitle) {
+    ensure(input.title?.trim(), 400, "Некорректный запрос");
+  }
+
+  let nextLessonId: string | null | undefined;
+  if (hasLessonId) {
+    const normalizedLessonId = input.lessonId?.trim() ?? "";
+    ensure(normalizedLessonId, 400, "Некорректный запрос");
+
+    const modules = asModuleRecordArray(assignment.course.modules);
+    const lessonIndex = findLessonIndex(modules, normalizedLessonId);
+    ensure(lessonIndex >= 0, 400, "Некорректный запрос");
+    nextLessonId = normalizedLessonId;
+  }
+
+  let parsedDueAt: Date | null | undefined;
+  if (hasDueAt) {
+    const dueAtRaw = typeof input.dueAt === "string" ? input.dueAt.trim() : "";
+    if (!dueAtRaw) {
+      parsedDueAt = null;
+    } else {
+      const dueAtValue = new Date(dueAtRaw);
+      ensure(!Number.isNaN(dueAtValue.getTime()), 400, "Операция недоступна");
+      parsedDueAt = dueAtValue;
+    }
+  }
+
+  const updated = await lmsRepository.prisma.assignment.update({
+    where: { id: assignmentId },
+    data: {
+      title: hasTitle ? input.title?.trim() : undefined,
+      description: hasDescription
+        ? input.description?.trim() || null
+        : undefined,
+      dueAt: hasDueAt ? parsedDueAt : undefined,
+      lessonId: hasLessonId ? nextLessonId : undefined,
+    },
+  });
+
+  return { message: "Успешно", assignment: updated };
+}
+
+export async function teacherDeleteAssignment(
+  userId: string | undefined,
+  assignmentId: string,
+) {
+  const currentUser = await requireCurrentUser(userId);
+  ensure(currentUser.role === UserRole.teacher, 403, "Доступ запрещен");
+
+  const assignment = await lmsRepository.prisma.assignment.findUnique({
+    where: { id: assignmentId },
+    include: { course: { select: { teacherId: true } } },
+  });
+  ensure(assignment, 404, "Ресурс не найден");
+  ensure(
+    assignment.course.teacherId === currentUser.id,
+    403,
+    "Операция недоступна",
+  );
+
+  await lmsRepository.prisma.assignment.delete({
+    where: { id: assignmentId },
+  });
+
+  return { message: "Успешно", assignment };
 }
 
 export async function teacherUploadMaterial(
