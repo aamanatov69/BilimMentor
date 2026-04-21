@@ -51,6 +51,7 @@ type LessonItem = {
 type AssignmentItem = {
   id: string;
   title: string;
+  description?: string | null;
   dueAt: string | null;
   lessonId?: string | null;
   lessonTitle?: string | null;
@@ -439,10 +440,10 @@ export default function StudentCourseDetailsPage() {
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="break-words [overflow-wrap:anywhere] text-2xl font-semibold text-slate-900">
+            <h1 className="break-words text-2xl font-semibold text-slate-900">
               {course?.title ?? "Курс"}
             </h1>
-            <p className="mt-1 break-words [overflow-wrap:anywhere] text-sm text-slate-600">
+            <p className="mt-1 break-words text-sm text-slate-600">
               {course?.description ?? "Материалы курса"}
             </p>
           </div>
@@ -525,7 +526,7 @@ export default function StudentCourseDetailsPage() {
                         <p className="text-xs text-slate-500">
                           Урок {index + 1}
                         </p>
-                        <p className="mt-0.5 break-words [overflow-wrap:anywhere] text-sm font-semibold text-slate-900">
+                        <p className="mt-0.5 break-words text-sm font-semibold text-slate-900">
                           {lesson.title}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
@@ -562,7 +563,7 @@ export default function StudentCourseDetailsPage() {
                         !completedLessonIds.has(selectedLesson.id),
                       )
                     }
-                    className="w-full shrink-0 whitespace-nowrap rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-center text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 sm:w-auto"
+                    className="h-9 w-full min-w-[170px] shrink-0 whitespace-nowrap rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-center text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 sm:w-auto"
                   >
                     {courseCompletedByTeacher
                       ? "Только просмотр"
@@ -612,7 +613,7 @@ export default function StudentCourseDetailsPage() {
                 ) : null}
 
                 {shouldShowLessonDescription ? (
-                  <div className="prose prose-slate mt-3 max-w-none break-words [overflow-wrap:anywhere] text-base leading-relaxed text-slate-700">
+                  <div className="prose prose-slate mt-3 max-w-none break-words text-base leading-relaxed text-slate-700">
                     <ReactMarkdown
                       remarkPlugins={[remarkMath]}
                       rehypePlugins={[rehypeKatex]}
@@ -654,7 +655,7 @@ export default function StudentCourseDetailsPage() {
                         </p>
                         {material.text ? (
                           material.type.toLowerCase() === "lecture" ? (
-                            <div className="prose prose-slate mt-3 max-w-none break-words [overflow-wrap:anywhere] rounded-xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-700">
+                            <div className="prose prose-slate mt-3 max-w-none break-words rounded-xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-700">
                               <ReactMarkdown
                                 remarkPlugins={[remarkMath]}
                                 rehypePlugins={[rehypeKatex]}
@@ -681,7 +682,7 @@ export default function StudentCourseDetailsPage() {
                               </ReactMarkdown>
                             </div>
                           ) : (
-                            <pre className="mt-3 whitespace-pre-wrap break-words [overflow-wrap:anywhere] rounded-xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-700">
+                            <pre className="mt-3 whitespace-pre-wrap break-words rounded-xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-700">
                               {material.text}
                             </pre>
                           )
@@ -709,7 +710,7 @@ export default function StudentCourseDetailsPage() {
                             type="button"
                             onClick={() => void openMaterialFile(material)}
                             disabled={busyMaterialId === material.id}
-                            className="mt-3 inline-flex w-full shrink-0 justify-center whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 sm:w-auto"
+                            className="mt-3 inline-flex h-8 w-full min-w-[150px] shrink-0 justify-center whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 sm:w-auto"
                           >
                             {busyMaterialId === material.id
                               ? "Открытие..."
@@ -756,6 +757,33 @@ export default function StudentCourseDetailsPage() {
                       <p className="mt-1 text-xs text-slate-500">
                         {assignment.lessonTitle || "Без привязки к уроку"}
                       </p>
+                      {assignment.description ? (
+                        <div className="prose prose-slate mt-2 max-w-none break-words text-xs leading-5">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkMath]}
+                            rehypePlugins={[rehypeKatex]}
+                            urlTransform={safeUrlTransform}
+                            components={{
+                              a: ({ node, ...props }) => (
+                                <a
+                                  {...props}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                />
+                              ),
+                              img: ({ node, ...props }) => (
+                                <img
+                                  {...props}
+                                  className="my-2 max-h-[220px] w-auto max-w-full rounded-lg border border-slate-200 object-contain"
+                                  loading="lazy"
+                                />
+                              ),
+                            }}
+                          >
+                            {normalizeMarkdownMath(assignment.description)}
+                          </ReactMarkdown>
+                        </div>
+                      ) : null}
                       <p
                         className={
                           overdue

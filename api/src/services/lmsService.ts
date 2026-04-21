@@ -268,6 +268,20 @@ function asString(value: unknown) {
   return typeof value === "string" ? value : "";
 }
 
+function stripMathTypeTokens(value: string) {
+  return value.replace(
+    /\[\[(MATH|CHEM):([\s\S]*?)\]\]/g,
+    (_match, _kind, formula) => {
+      const normalizedFormula = asString(formula).trim();
+      return normalizedFormula ? ` ${normalizedFormula} ` : " ";
+    },
+  );
+}
+
+function sanitizeStudentFacingText(value: unknown) {
+  return stripMathTypeTokens(asString(value)).replace(/\s+/g, " ").trim();
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -408,8 +422,8 @@ async function notifyStudentsAboutNewAssignment(params: {
         type: NotificationType.assignment_deadline,
         title: "Добавлено новое задание",
         body: params.dueAt
-          ? `${params.courseTitle}: "${params.assignmentTitle}". Срок сдачи: ${params.dueAt.toLocaleString("ru-RU")}.`
-          : `${params.courseTitle}: добавлено задание "${params.assignmentTitle}".`,
+          ? `${params.courseTitle}: "${sanitizeStudentFacingText(params.assignmentTitle)}". Срок сдачи: ${params.dueAt.toLocaleString("ru-RU")}.`
+          : `${params.courseTitle}: добавлено задание "${sanitizeStudentFacingText(params.assignmentTitle)}".`,
         targetRole: NotificationTargetRole.student,
         userId: enrollment.studentId,
       },
@@ -1434,6 +1448,7 @@ export async function adminUpdateCourse(
     level?: unknown;
     teacher_id?: string;
     isPublished?: unknown;
+    createdAt?: unknown;
   },
 ) {
   const course = await lmsRepository.prisma.course.findUnique({
@@ -1475,11 +1490,24 @@ export async function adminUpdateCourse(
     ensure(typeof input.isPublished === "boolean", 400, "Некорректный запрос");
   }
 
+  if (typeof input.createdAt !== "undefined") {
+    ensure(typeof input.createdAt === "string", 400, "Некорректный запрос");
+    const parsedCreatedAt = new Date(input.createdAt);
+    ensure(
+      !Number.isNaN(parsedCreatedAt.getTime()),
+      400,
+      "Некорректный запрос",
+    );
+  }
+
   const normalizedUpdateLevel =
     typeof input.level === "string" &&
     isCourseLevel(input.level.trim().toLowerCase())
       ? (input.level.trim().toLowerCase() as CourseLevel)
       : undefined;
+
+  const normalizedCreatedAt =
+    typeof input.createdAt === "string" ? new Date(input.createdAt) : undefined;
 
   const updated = await lmsRepository.prisma.course.update({
     where: { id: courseId },
@@ -1499,12 +1527,162 @@ export async function adminUpdateCourse(
         typeof input.teacher_id === "string" ? input.teacher_id : undefined,
       isPublished:
         typeof input.isPublished === "boolean" ? input.isPublished : undefined,
+      createdAt: normalizedCreatedAt,
     },
   });
 
   return {
     course: { ...updated, modules: readModules(updated.modules) },
     teacher_id: updated.teacherId,
+  };
+}
+
+export async function adminCourseDetails(courseId: string) {
+  const course = await lmsRepository.prisma.course.findUnique({
+    where: { id: courseId },
+    include: {
+      teacher: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  ensure(course, 404, "Ресурс не найден");
+
+  return {
+    course: {
+      ...course,
+      modules: readModules(course.modules),
+    },
+  };
+}
+
+export async function adminCreateLesson(
+  courseId: string,
+  input: { title?: string; description?: string },
+) {
+  const course = await lmsRepository.prisma.course.findUnique({
+    where: { id: courseId },
+  });
+  ensure(course, 404, "Ресурс не найден");
+
+  const title = (input.title ?? "").trim();
+  ensure(title, 400, "Некорректный запрос");
+
+  const modules = asModuleRecordArray(course.modules);
+  const duplicateExists = modules.some((item) => {
+    const type = asString(item.type).toLowerCase();
+    if (type !== "lesson") return false;
+    return asString(item.title).trim().toLowerCase() === title.toLowerCase();
+  });
+  ensure(!duplicateExists, 409, "Конфликт данных");
+
+  const lesson = {
+    id: makeEntityId("lesson"),
+    type: "lesson",
+    title,
+    description:
+      (input.description ?? "").trim().length > 0
+        ? (input.description ?? "")
+        : null,
+    isVisibleToStudents: false,
+    createdAt: new Date().toISOString(),
+    materials: [] as Record<string, unknown>[],
+  };
+
+  const updated = await lmsRepository.prisma.course.update({
+    where: { id: courseId },
+    data: {
+      modules: [...modules, lesson] as Prisma.InputJsonValue,
+    },
+  });
+
+  return {
+    message: "Успешно",
+    lesson,
+    course: { ...updated, modules: readModules(updated.modules) },
+  };
+}
+
+export async function adminUpdateLesson(
+  courseId: string,
+  lessonId: string,
+  input: { title?: string; description?: string },
+) {
+  const course = await lmsRepository.prisma.course.findUnique({
+    where: { id: courseId },
+  });
+  ensure(course, 404, "Ресурс не найден");
+
+  const normalizedTitle = (input.title ?? "").trim();
+  ensure(normalizedTitle, 400, "Некорректный запрос");
+
+  const modules = asModuleRecordArray(course.modules);
+  const lessonIndex = findLessonIndex(modules, lessonId);
+  ensure(lessonIndex >= 0, 404, "Ресурс не найден");
+
+  const duplicateExists = modules.some((item, index) => {
+    if (index === lessonIndex) return false;
+    const type = asString(item.type).toLowerCase();
+    if (type !== "lesson") return false;
+    return (
+      asString(item.title).trim().toLowerCase() ===
+      normalizedTitle.toLowerCase()
+    );
+  });
+  ensure(!duplicateExists, 409, "Конфликт данных");
+
+  const lesson = {
+    ...modules[lessonIndex],
+    title: normalizedTitle,
+    description:
+      (input.description ?? "").trim().length > 0
+        ? (input.description ?? "")
+        : null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const nextModules = [...modules];
+  nextModules[lessonIndex] = lesson;
+
+  const updated = await lmsRepository.prisma.course.update({
+    where: { id: courseId },
+    data: { modules: nextModules as Prisma.InputJsonValue },
+  });
+
+  return {
+    message: "Успешно",
+    lesson,
+    course: { ...updated, modules: readModules(updated.modules) },
+  };
+}
+
+export async function adminDeleteLesson(courseId: string, lessonId: string) {
+  const course = await lmsRepository.prisma.course.findUnique({
+    where: { id: courseId },
+  });
+  ensure(course, 404, "Ресурс не найден");
+
+  const modules = asModuleRecordArray(course.modules);
+  const lessonIndex = findLessonIndex(modules, lessonId);
+  ensure(lessonIndex >= 0, 404, "Ресурс не найден");
+
+  const deletedLesson = modules[lessonIndex];
+  const nextModules = modules.filter((item) => asString(item.id) !== lessonId);
+
+  const updated = await lmsRepository.prisma.course.update({
+    where: { id: courseId },
+    data: { modules: nextModules as Prisma.InputJsonValue },
+  });
+
+  return {
+    message: "Успешно",
+    lesson: deletedLesson,
+    course: { ...updated, modules: readModules(updated.modules) },
   };
 }
 
@@ -3519,7 +3697,7 @@ export async function studentDashboardOverview(userId: string | undefined) {
 
     return {
       id: item.id,
-      title: item.title,
+      title: sanitizeStudentFacingText(item.title),
       course: item.course.title,
       dueDate: dueAt ? dueAt.toISOString() : null,
       status: ownSubmission ? "Enabled" : "Disabled",
@@ -3533,7 +3711,7 @@ export async function studentDashboardOverview(userId: string | undefined) {
         .filter((submission) => submission.grade?.score !== null)
         .map((submission) => ({
           id: submission.id,
-          assignment: item.title,
+          assignment: sanitizeStudentFacingText(item.title),
           course: item.course.title,
           grade: submission.grade?.score
             ? Number(submission.grade.score)
@@ -3768,7 +3946,7 @@ export async function studentAssignments(userId?: string) {
 
       return {
         id: item.id,
-        title: item.title,
+        title: sanitizeStudentFacingText(item.title),
         description: item.description,
         lessonId: item.lessonId,
         lessonTitle: readLessonTitleById(item.course.modules, item.lessonId),
@@ -3966,7 +4144,7 @@ export async function studentGradesOverview(userId?: string) {
     .map((item) => ({
       submissionId: item.id,
       assignmentId: item.assignmentId,
-      assignmentTitle: item.assignment.title,
+      assignmentTitle: sanitizeStudentFacingText(item.assignment.title),
       courseId: item.assignment.course.id,
       courseTitle: item.assignment.course.title,
       teacherName: item.assignment.course.teacher.fullName,

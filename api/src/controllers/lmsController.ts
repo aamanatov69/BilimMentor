@@ -231,6 +231,36 @@ export const lmsController = {
     res.json(result);
   },
 
+  adminCourseDetails: async (req: AuthenticatedRequest, res: Response) => {
+    const result = await lmsService.adminCourseDetails(String(req.params.id));
+    res.json(result);
+  },
+
+  adminCreateLesson: async (req: AuthenticatedRequest, res: Response) => {
+    const result = await lmsService.adminCreateLesson(
+      String(req.params.id),
+      req.body,
+    );
+    res.status(201).json(result);
+  },
+
+  adminUpdateLesson: async (req: AuthenticatedRequest, res: Response) => {
+    const result = await lmsService.adminUpdateLesson(
+      String(req.params.id),
+      String(req.params.lessonId),
+      req.body,
+    );
+    res.json(result);
+  },
+
+  adminDeleteLesson: async (req: AuthenticatedRequest, res: Response) => {
+    const result = await lmsService.adminDeleteLesson(
+      String(req.params.id),
+      String(req.params.lessonId),
+    );
+    res.json(result);
+  },
+
   adminDeleteCourse: async (req: AuthenticatedRequest, res: Response) => {
     const result = await lmsService.adminDeleteCourse(String(req.params.id));
     res.json(result);

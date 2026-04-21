@@ -2,6 +2,7 @@
 
 import { LessonEditor } from "@/components/lesson-editor";
 import { useToast } from "@/components/ui/toast-provider";
+import "katex/dist/katex.min.css";
 import { ChevronRight, GripVertical, Save } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -12,6 +13,9 @@ import {
   useMemo,
   useState,
 } from "react";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import rehypeKatex from "rehype-katex";
+import remarkMath from "remark-math";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -669,6 +673,54 @@ function detectMaterialTypeFromMime(mimeType: string) {
   if (mime.startsWith("video/")) return "video";
   if (mime.includes("pdf")) return "pdf";
   return "file";
+}
+
+function normalizeMarkdownMath(input: string) {
+  return input
+    .replace(/\r\n/g, "\n")
+    .replace(/\[\[(MATH|CHEM):([\s\S]*?)\]\]/g, (_match, _type, formula) => {
+      const value = String(formula ?? "").trim();
+      return value ? `\n$$\n${value}\n$$\n` : "";
+    })
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_match, formula) => {
+      const value = String(formula ?? "").trim();
+      return value ? `\n$$\n${value}\n$$\n` : "";
+    })
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_match, formula) => {
+      const value = String(formula ?? "").trim();
+      return value ? `$${value}$` : "";
+    })
+    .replace(/\$\$([^\n$][^\n]*?[^\n$]?)\$\$/g, (_match, formula) => {
+      const value = String(formula ?? "").trim();
+      return value ? `$${value}$` : "";
+    });
+}
+
+function safeUrlTransform(url: string) {
+  if (/^\/uploads\//i.test(url)) {
+    if (typeof window !== "undefined") {
+      return `${window.location.origin}${url}`;
+    }
+    return url;
+  }
+
+  if (/^data:image\//i.test(url)) {
+    return url;
+  }
+
+  return defaultUrlTransform(url);
+}
+
+function buildAssignmentTitleFromText(value: string) {
+  const normalized = value
+    .replace(/\[\[(MATH|CHEM):([\s\S]*?)\]\]/g, (_match, _kind, formula) => {
+      const safeFormula = String(formula ?? "").trim();
+      return safeFormula ? ` ${safeFormula} ` : " ";
+    })
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return normalized.slice(0, 120);
 }
 
 export default function NewTeacherCoursePage() {
@@ -1659,7 +1711,7 @@ export default function NewTeacherCoursePage() {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              title: assignmentText.trim().slice(0, 120),
+              title: buildAssignmentTitleFromText(assignmentText),
               description: assignmentText.trim(),
               lessonId,
               dueAt: assignmentDueAt,
@@ -1830,7 +1882,7 @@ export default function NewTeacherCoursePage() {
                 type="button"
                 onClick={() => void goToLessonStep()}
                 disabled={isSaving}
-                className="inline-flex items-center gap-2 rounded-lg border border-blue-400 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
+                className="inline-flex h-10 min-w-[220px] items-center justify-center gap-2 rounded-lg border border-blue-400 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
               >
                 {isSaving
                   ? isEditMode
@@ -1853,7 +1905,7 @@ export default function NewTeacherCoursePage() {
                     type="button"
                     onClick={() => void saveLessonOrder()}
                     disabled={isReordering || existingLessons.length < 2}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                    className="h-8 min-w-[150px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                   >
                     {isReordering ? "Сохранение..." : "Сохранить порядок"}
                   </button>
@@ -1908,7 +1960,7 @@ export default function NewTeacherCoursePage() {
                         <span className="text-xs font-semibold text-slate-500">
                           {index + 1}
                         </span>
-                        <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-sm text-slate-800">
+                        <span className="min-w-0 flex-1 break-words text-sm text-slate-800">
                           {lesson.title}
                         </span>
                       </div>
@@ -2035,6 +2087,39 @@ export default function NewTeacherCoursePage() {
                           }
                         />
                       </div>
+
+                      {assignmentText.trim() ? (
+                        <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Preview задания
+                          </p>
+                          <div className="prose prose-slate max-w-none break-words text-sm leading-6">
+                            <ReactMarkdown
+                              remarkPlugins={[remarkMath]}
+                              rehypePlugins={[rehypeKatex]}
+                              urlTransform={safeUrlTransform}
+                              components={{
+                                a: ({ node, ...props }) => (
+                                  <a
+                                    {...props}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  />
+                                ),
+                                img: ({ node, ...props }) => (
+                                  <img
+                                    {...props}
+                                    className="my-3 max-h-[320px] w-auto max-w-full rounded-lg border border-slate-200 object-contain"
+                                    loading="lazy"
+                                  />
+                                ),
+                              }}
+                            >
+                              {normalizeMarkdownMath(assignmentText)}
+                            </ReactMarkdown>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -2045,7 +2130,7 @@ export default function NewTeacherCoursePage() {
               <button
                 type="button"
                 onClick={() => setStep("course")}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                className="h-10 min-w-[180px] rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
               >
                 Назад к курсу
               </button>
@@ -2053,7 +2138,7 @@ export default function NewTeacherCoursePage() {
               <button
                 type="submit"
                 disabled={isSaving}
-                className="inline-flex items-center gap-2 rounded-lg border border-blue-400 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-10 min-w-[220px] items-center justify-center gap-2 rounded-lg border border-blue-400 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Save className="h-4 w-4" />
                 {isSaving

@@ -12,6 +12,7 @@ type CourseItem = {
   title: string;
   teacherId: string;
   isPublished: boolean;
+  createdAt: string;
 };
 
 type TeacherItem = {
@@ -358,6 +359,7 @@ export default function AdminCoursesPage() {
               <th className="py-2 pr-3 font-medium">Название курса</th>
               <th className="py-2 pr-3 font-medium">Преподаватель</th>
               <th className="py-2 pr-3 font-medium">Количество студентов</th>
+              <th className="py-2 pr-3 font-medium">Создан</th>
               <th className="py-2 pr-3 font-medium">Статус</th>
               <th className="py-2 pr-3 font-medium">Действия</th>
             </tr>
@@ -386,11 +388,20 @@ export default function AdminCoursesPage() {
                 <td className="py-3 pr-3">
                   {enrollmentsByCourse[course.id] ?? 0}
                 </td>
+                <td className="py-3 pr-3 text-xs text-slate-600">
+                  {new Date(course.createdAt).toLocaleString("ru-RU")}
+                </td>
                 <td className="py-3 pr-3">
                   {course.isPublished ? "Активный" : "Скрытый"}
                 </td>
                 <td className="py-3 pr-3">
                   <div className="flex flex-wrap gap-3">
+                    <Link
+                      href={`/dashboard/admin/courses/${course.id}/edit`}
+                      className="text-blue-700 hover:underline"
+                    >
+                      Редактировать курс и уроки
+                    </Link>
                     <Link
                       href={`/dashboard/admin/courses/${course.id}/students`}
                       className="text-blue-700 hover:underline"

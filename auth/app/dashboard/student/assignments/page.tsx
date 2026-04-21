@@ -104,6 +104,20 @@ function fileToBase64(file: File) {
   });
 }
 
+function compactPlainText(value: string | null | undefined) {
+  const source = String(value ?? "").trim();
+  if (!source) {
+    return "";
+  }
+
+  return source
+    .replace(/\[\[(MATH|CHEM):([\s\S]*?)\]\]/g, " $2 ")
+    .replace(/[`*_>#\-]/g, " ")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export default function StudentAssignmentsPage() {
   const [rows, setRows] = useState<StudentAssignment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -352,6 +366,11 @@ export default function StudentAssignmentsPage() {
         <p className="mt-1 text-xs text-slate-500">
           {assignment.lessonTitle || "Без урока"}
         </p>
+        {compactPlainText(assignment.description) ? (
+          <p className="mt-2 line-clamp-3 text-xs text-slate-600">
+            {compactPlainText(assignment.description)}
+          </p>
+        ) : null}
 
         {readOnlyCourse ? (
           <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">
@@ -369,7 +388,7 @@ export default function StudentAssignmentsPage() {
           type="button"
           disabled={readOnlyCourse}
           onClick={() => setActiveCardId(assignment.id)}
-          className="mt-3 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          className="mt-3 inline-flex h-8 min-w-[130px] items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {readOnlyCourse
             ? "Только просмотр"
@@ -409,9 +428,6 @@ export default function StudentAssignmentsPage() {
                       ? "Пересдача задания"
                       : "Сдача задания"}
                   </h2>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {activeAssignment.title} · {activeAssignment.course.title}
-                  </p>
                 </div>
                 <button
                   type="button"
@@ -423,6 +439,35 @@ export default function StudentAssignmentsPage() {
               </div>
 
               <div className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                {activeAssignment.description ? (
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Условие задания
+                    </p>
+                    <div className="prose prose-slate max-w-none break-words text-sm leading-6">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkMath]}
+                        rehypePlugins={[rehypeKatex]}
+                        urlTransform={safeUrlTransform}
+                        components={{
+                          a: ({ node, ...props }) => (
+                            <a {...props} target="_blank" rel="noreferrer" />
+                          ),
+                          img: ({ node, ...props }) => (
+                            <img
+                              {...props}
+                              className="my-3 max-h-[360px] w-auto max-w-full rounded-lg border border-slate-200 object-contain"
+                              loading="lazy"
+                            />
+                          ),
+                        }}
+                      >
+                        {normalizeMarkdownMath(activeAssignment.description)}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                ) : null}
+
                 <textarea
                   ref={(node) => {
                     textareaRefs.current[activeAssignment.id] = node;
@@ -504,14 +549,14 @@ export default function StudentAssignmentsPage() {
                     type="button"
                     disabled={busy[activeAssignment.id]}
                     onClick={() => void submitAssignment(activeAssignment)}
-                    className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                    className="h-9 min-w-[120px] rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
                   >
                     {busy[activeAssignment.id] ? "Отправка..." : "Отправить"}
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveCardId(null)}
-                    className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    className="h-9 min-w-[120px] rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                   >
                     Отмена
                   </button>

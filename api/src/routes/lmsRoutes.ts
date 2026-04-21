@@ -274,6 +274,30 @@ lmsRoutes.put(
   requireRole([UserRole.admin]),
   asyncHandler(lmsController.adminUpdateCourse),
 );
+lmsRoutes.get(
+  "/api/admin/courses/:id/details",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminCourseDetails),
+);
+lmsRoutes.post(
+  "/api/admin/courses/:id/lessons",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminCreateLesson),
+);
+lmsRoutes.put(
+  "/api/admin/courses/:id/lessons/:lessonId",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminUpdateLesson),
+);
+lmsRoutes.delete(
+  "/api/admin/courses/:id/lessons/:lessonId",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminDeleteLesson),
+);
 lmsRoutes.delete(
   "/api/admin/courses/:id",
   verifyToken,
