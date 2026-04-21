@@ -118,6 +118,24 @@ function compactPlainText(value: string | null | undefined) {
     .trim();
 }
 
+function shouldRenderAssignmentDescription(
+  title: string | null | undefined,
+  description: string | null | undefined,
+) {
+  const normalizedTitle = compactPlainText(title);
+  const normalizedDescription = compactPlainText(description);
+
+  if (!normalizedDescription) {
+    return false;
+  }
+
+  if (!normalizedTitle) {
+    return true;
+  }
+
+  return normalizedDescription !== normalizedTitle;
+}
+
 export default function StudentAssignmentsPage() {
   const [rows, setRows] = useState<StudentAssignment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -353,6 +371,11 @@ export default function StudentAssignmentsPage() {
 
   const renderCard = (assignment: StudentAssignment) => {
     const readOnlyCourse = assignment.course.completedByTeacher === true;
+    const shouldShowDescription = shouldRenderAssignmentDescription(
+      assignment.title,
+      assignment.description,
+    );
+    const descriptionPreview = compactPlainText(assignment.description);
 
     return (
       <article
@@ -366,9 +389,9 @@ export default function StudentAssignmentsPage() {
         <p className="mt-1 text-xs text-slate-500">
           {assignment.lessonTitle || "Без урока"}
         </p>
-        {compactPlainText(assignment.description) ? (
+        {shouldShowDescription ? (
           <p className="mt-2 line-clamp-3 text-xs text-slate-600">
-            {compactPlainText(assignment.description)}
+            {descriptionPreview}
           </p>
         ) : null}
 
@@ -439,7 +462,10 @@ export default function StudentAssignmentsPage() {
               </div>
 
               <div className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                {activeAssignment.description ? (
+                {shouldRenderAssignmentDescription(
+                  activeAssignment.title,
+                  activeAssignment.description,
+                ) ? (
                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                     <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Условие задания

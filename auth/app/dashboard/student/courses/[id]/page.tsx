@@ -92,6 +92,38 @@ function normalizeLessonText(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function compactAssignmentText(value: string | null | undefined) {
+  const source = asString(value).trim();
+  if (!source) {
+    return "";
+  }
+
+  return source
+    .replace(/\[\[(MATH|CHEM):([\s\S]*?)\]\]/g, " $2 ")
+    .replace(/[`*_>#\-]/g, " ")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function shouldShowAssignmentDescription(
+  title: string | null | undefined,
+  description: string | null | undefined,
+) {
+  const normalizedTitle = compactAssignmentText(title);
+  const normalizedDescription = compactAssignmentText(description);
+
+  if (!normalizedDescription) {
+    return false;
+  }
+
+  if (!normalizedTitle) {
+    return true;
+  }
+
+  return normalizedTitle !== normalizedDescription;
+}
+
 function normalizeMarkdownMath(input: string) {
   return input
     .replace(/\r\n/g, "\n")
@@ -746,6 +778,10 @@ export default function StudentCourseDetailsPage() {
                   const overdue = dueAt
                     ? dueAt.getTime() < Date.now() && !assignment.submission
                     : false;
+                  const showDescription = shouldShowAssignmentDescription(
+                    assignment.title,
+                    assignment.description,
+                  );
                   return (
                     <article
                       key={assignment.id}
@@ -757,7 +793,7 @@ export default function StudentCourseDetailsPage() {
                       <p className="mt-1 text-xs text-slate-500">
                         {assignment.lessonTitle || "Без привязки к уроку"}
                       </p>
-                      {assignment.description ? (
+                      {showDescription ? (
                         <div className="prose prose-slate mt-2 max-w-none break-words text-xs leading-5">
                           <ReactMarkdown
                             remarkPlugins={[remarkMath]}

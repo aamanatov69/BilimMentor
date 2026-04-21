@@ -1686,6 +1686,57 @@ export async function adminDeleteLesson(courseId: string, lessonId: string) {
   };
 }
 
+export async function adminDeleteLessonMaterial(
+  courseId: string,
+  lessonId: string,
+  materialId: string,
+) {
+  const normalizedMaterialId = materialId.trim();
+  ensure(normalizedMaterialId, 400, "Некорректный запрос");
+
+  const course = await lmsRepository.prisma.course.findUnique({
+    where: { id: courseId },
+  });
+  ensure(course, 404, "Ресурс не найден");
+
+  const modules = asModuleRecordArray(course.modules);
+  const lessonIndex = findLessonIndex(modules, lessonId);
+  ensure(lessonIndex >= 0, 404, "Ресурс не найден");
+
+  const lesson = { ...modules[lessonIndex] };
+  const currentMaterials = Array.isArray(lesson.materials)
+    ? lesson.materials.filter((item): item is Record<string, unknown> =>
+        isRecord(item),
+      )
+    : [];
+
+  const nextMaterials = currentMaterials.filter(
+    (item) => asString(item.id) !== normalizedMaterialId,
+  );
+  ensure(
+    nextMaterials.length !== currentMaterials.length,
+    404,
+    "Ресурс не найден",
+  );
+
+  lesson.materials = nextMaterials;
+  lesson.updatedAt = new Date().toISOString();
+
+  const nextModules = [...modules];
+  nextModules[lessonIndex] = lesson;
+
+  const updated = await lmsRepository.prisma.course.update({
+    where: { id: courseId },
+    data: { modules: nextModules as Prisma.InputJsonValue },
+  });
+
+  return {
+    message: "Успешно",
+    lesson,
+    course: { ...updated, modules: readModules(updated.modules) },
+  };
+}
+
 export async function adminDeleteCourse(courseId: string) {
   const removed = await lmsRepository.prisma.course.findUnique({
     where: { id: courseId },
@@ -3310,6 +3361,62 @@ export async function teacherAddLessonMaterial(
     message: "Успешно",
     lesson,
     material,
+    course: { ...updated, modules: readModules(updated.modules) },
+  };
+}
+
+export async function teacherDeleteLessonMaterial(
+  userId: string | undefined,
+  courseId: string,
+  lessonId: string,
+  materialId: string,
+) {
+  const currentUser = await requireCurrentUser(userId);
+  ensure(currentUser.role === UserRole.teacher, 403, "Доступ запрещен");
+
+  const normalizedMaterialId = materialId.trim();
+  ensure(normalizedMaterialId, 400, "Некорректный запрос");
+
+  const course = await lmsRepository.prisma.course.findUnique({
+    where: { id: courseId },
+  });
+  ensure(course, 404, "Ресурс не найден");
+  ensure(course.teacherId === currentUser.id, 403, "Операция недоступна");
+
+  const modules = asModuleRecordArray(course.modules);
+  const lessonIndex = findLessonIndex(modules, lessonId);
+  ensure(lessonIndex >= 0, 404, "Ресурс не найден");
+
+  const lesson = { ...modules[lessonIndex] };
+  const currentMaterials = Array.isArray(lesson.materials)
+    ? lesson.materials.filter((item): item is Record<string, unknown> =>
+        isRecord(item),
+      )
+    : [];
+
+  const nextMaterials = currentMaterials.filter(
+    (item) => asString(item.id) !== normalizedMaterialId,
+  );
+  ensure(
+    nextMaterials.length !== currentMaterials.length,
+    404,
+    "Ресурс не найден",
+  );
+
+  lesson.materials = nextMaterials;
+  lesson.updatedAt = new Date().toISOString();
+
+  const nextModules = [...modules];
+  nextModules[lessonIndex] = lesson;
+
+  const updated = await lmsRepository.prisma.course.update({
+    where: { id: courseId },
+    data: { modules: nextModules as Prisma.InputJsonValue },
+  });
+
+  return {
+    message: "Успешно",
+    lesson,
     course: { ...updated, modules: readModules(updated.modules) },
   };
 }

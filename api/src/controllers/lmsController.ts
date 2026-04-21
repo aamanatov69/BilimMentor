@@ -261,6 +261,18 @@ export const lmsController = {
     res.json(result);
   },
 
+  adminDeleteLessonMaterial: async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ) => {
+    const result = await lmsService.adminDeleteLessonMaterial(
+      String(req.params.id),
+      String(req.params.lessonId),
+      String(req.params.materialId),
+    );
+    res.json(result);
+  },
+
   adminDeleteCourse: async (req: AuthenticatedRequest, res: Response) => {
     const result = await lmsService.adminDeleteCourse(String(req.params.id));
     res.json(result);
@@ -509,6 +521,19 @@ export const lmsController = {
       req.body,
     );
     res.status(201).json(result);
+  },
+
+  teacherDeleteLessonMaterial: async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ) => {
+    const result = await lmsService.teacherDeleteLessonMaterial(
+      req.user?.sub,
+      String(req.params.id),
+      String(req.params.lessonId),
+      String(req.params.materialId),
+    );
+    res.json(result);
   },
 
   teacherSetLessonVisibility: async (

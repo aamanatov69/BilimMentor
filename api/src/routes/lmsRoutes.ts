@@ -299,6 +299,12 @@ lmsRoutes.delete(
   asyncHandler(lmsController.adminDeleteLesson),
 );
 lmsRoutes.delete(
+  "/api/admin/courses/:id/lessons/:lessonId/materials/:materialId",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(lmsController.adminDeleteLessonMaterial),
+);
+lmsRoutes.delete(
   "/api/admin/courses/:id",
   verifyToken,
   requireRole([UserRole.admin]),
@@ -406,6 +412,12 @@ lmsRoutes.post(
   verifyToken,
   requireRole([UserRole.teacher]),
   asyncHandler(lmsController.teacherAddLessonMaterial),
+);
+lmsRoutes.delete(
+  "/api/teacher/courses/:id/lessons/:lessonId/materials/:materialId",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(lmsController.teacherDeleteLessonMaterial),
 );
 lmsRoutes.patch(
   "/api/teacher/courses/:id/lessons/:lessonId/visibility",

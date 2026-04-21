@@ -8,11 +8,20 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 type CourseLevel = "beginner" | "intermediate" | "advanced";
 
+type LessonMaterialRow = {
+  id: string;
+  title: string;
+  type: string;
+  url: string;
+  canDelete: boolean;
+};
+
 type LessonRow = {
   id: string;
   title: string;
   description: string;
   isVisibleToStudents: boolean;
+  materials: LessonMaterialRow[];
 };
 
 type CourseDetails = {
@@ -56,12 +65,41 @@ function parseLessons(modules: Array<Record<string, unknown>> | undefined) {
 
   return rows
     .filter((item) => String(item.type ?? "").toLowerCase() === "lesson")
-    .map((item) => ({
-      id: String(item.id ?? ""),
-      title: String(item.title ?? ""),
-      description: String(item.description ?? ""),
-      isVisibleToStudents: item.isVisibleToStudents !== false,
-    }))
+    .map((item) => {
+      const materialsRaw = Array.isArray(item.materials) ? item.materials : [];
+
+      const materials = materialsRaw
+        .filter((material) => typeof material === "object" && material !== null)
+        .map((material, index) => {
+          const record = material as Record<string, unknown>;
+          const file =
+            typeof record.file === "object" && record.file !== null
+              ? (record.file as Record<string, unknown>)
+              : null;
+
+          const materialId = String(record.id ?? "").trim();
+          const title =
+            String(record.title ?? "").trim() ||
+            String(file?.name ?? "").trim() ||
+            `Материал ${index + 1}`;
+
+          return {
+            id: materialId || `material-${index + 1}`,
+            title,
+            type: String(record.type ?? "material").trim(),
+            url: String(record.url ?? "").trim(),
+            canDelete: materialId.length > 0,
+          } satisfies LessonMaterialRow;
+        });
+
+      return {
+        id: String(item.id ?? ""),
+        title: String(item.title ?? ""),
+        description: String(item.description ?? ""),
+        isVisibleToStudents: item.isVisibleToStudents !== false,
+        materials,
+      };
+    })
     .filter((item) => item.id.length > 0);
 }
 
@@ -86,6 +124,7 @@ export default function AdminEditCoursePage() {
   const [savingCourse, setSavingCourse] = useState(false);
   const [savingLessonId, setSavingLessonId] = useState("");
   const [deletingLessonId, setDeletingLessonId] = useState("");
+  const [deletingMaterialKey, setDeletingMaterialKey] = useState("");
   const [creatingLesson, setCreatingLesson] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -271,6 +310,39 @@ export default function AdminEditCoursePage() {
       setError("Ошибка сети при удалении урока");
     } finally {
       setDeletingLessonId("");
+    }
+  };
+
+  const onDeleteLessonMaterial = async (
+    lessonId: string,
+    materialId: string,
+  ) => {
+    const requestKey = `${lessonId}:${materialId}`;
+    setDeletingMaterialKey(requestKey);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/admin/courses/${courseId}/lessons/${lessonId}/materials/${materialId}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        },
+      );
+
+      const data = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        setError(data.message ?? "Не удалось удалить материал");
+        return;
+      }
+
+      setMessage("Материал удален");
+      await loadCourse();
+    } catch {
+      setError("Ошибка сети при удалении материала");
+    } finally {
+      setDeletingMaterialKey("");
     }
   };
 
@@ -513,6 +585,68 @@ export default function AdminEditCoursePage() {
                         Видимость для студентов:{" "}
                         {lesson.isVisibleToStudents ? "Да" : "Нет"}
                       </span>
+                    </div>
+                    <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2">
+                      <p className="text-xs font-semibold text-slate-600">
+                        Материалы урока
+                      </p>
+                      {lesson.materials.length === 0 ? (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Материалы не добавлены.
+                        </p>
+                      ) : (
+                        <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                          {lesson.materials.map((material) => {
+                            const requestKey = `${lesson.id}:${material.id}`;
+                            const isDeleting =
+                              deletingMaterialKey === requestKey;
+                            return (
+                              <li
+                                key={requestKey}
+                                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2"
+                              >
+                                {material.url ? (
+                                  <a
+                                    href={material.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="min-w-0 truncate text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900"
+                                    title="Открыть материал"
+                                  >
+                                    {material.title}
+                                  </a>
+                                ) : (
+                                  <span
+                                    className="min-w-0 truncate"
+                                    title={material.title}
+                                  >
+                                    {material.title}
+                                  </span>
+                                )}
+                                {material.canDelete ? (
+                                  <button
+                                    type="button"
+                                    disabled={isDeleting}
+                                    onClick={() =>
+                                      void onDeleteLessonMaterial(
+                                        lesson.id,
+                                        material.id,
+                                      )
+                                    }
+                                    className="shrink-0 whitespace-nowrap rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                                  >
+                                    {isDeleting ? "Удаление..." : "Удалить"}
+                                  </button>
+                                ) : (
+                                  <span className="text-xs text-slate-400">
+                                    без ID
+                                  </span>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2">
                       <button

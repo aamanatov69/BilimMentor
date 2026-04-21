@@ -36,6 +36,15 @@ type LessonRecord = {
   materials: Array<Record<string, unknown>>;
 };
 
+type ExistingLessonMaterial = {
+  id: string;
+  title: string;
+  type: string;
+  url: string;
+  hasFile: boolean;
+  canDelete: boolean;
+};
+
 type TeacherCourseDetailsResponse = {
   course?: {
     id?: string;
@@ -784,6 +793,9 @@ export default function NewTeacherCoursePage() {
   const [codeFields, setCodeFields] = useState<string[]>([]);
   const [lessonLinks, setLessonLinks] = useState<string[]>([]);
   const [lessonFiles, setLessonFiles] = useState<File[]>([]);
+  const [existingLessonMaterials, setExistingLessonMaterials] = useState<
+    ExistingLessonMaterial[]
+  >([]);
   const [assignmentText, setAssignmentText] = useState("");
   const [assignmentDueAt, setAssignmentDueAt] = useState("");
   const [showLinks, setShowLinks] = useState(false);
@@ -817,6 +829,8 @@ export default function NewTeacherCoursePage() {
 
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingExistingMaterialId, setDeletingExistingMaterialId] =
+    useState("");
 
   const appendUniqueLesson = (
     lessons: LessonRecord[],
@@ -824,6 +838,31 @@ export default function NewTeacherCoursePage() {
   ) => {
     const withoutExisting = lessons.filter((item) => item.id !== lesson.id);
     return [...withoutExisting, lesson];
+  };
+
+  const mapExistingLessonMaterials = (
+    materials: Array<Record<string, unknown>>,
+  ) => {
+    return materials
+      .map((material, index) => {
+        const file =
+          typeof material.file === "object" && material.file !== null
+            ? (material.file as Record<string, unknown>)
+            : null;
+
+        const title = String(material.title ?? "").trim();
+        const fileName = String(file?.name ?? "").trim();
+
+        return {
+          id: String(material.id ?? `existing-material-${index + 1}`),
+          title: title || fileName || `Материал ${index + 1}`,
+          type: String(material.type ?? "material").trim(),
+          url: String(material.url ?? "").trim(),
+          hasFile: Boolean(file && String(file.dataBase64 ?? "").trim()),
+          canDelete: String(material.id ?? "").trim().length > 0,
+        } satisfies ExistingLessonMaterial;
+      })
+      .filter((material) => material.type.toLowerCase() !== "lecture");
   };
 
   const mapLessons = (modules: Array<Record<string, unknown>> | undefined) => {
@@ -901,14 +940,21 @@ export default function NewTeacherCoursePage() {
             setTargetLessonId(selectedLesson.id);
             setLessonTitle(selectedLesson.title);
             setLessonLecture(selectedLesson.description);
+            setLessonFiles([]);
 
             const existingLinks = selectedLesson.materials
               .filter((material) => String(material.type ?? "") === "link")
               .map((material) => String(material.url ?? "").trim())
               .filter((item) => item.length > 0);
 
+            const existingMaterials = mapExistingLessonMaterials(
+              selectedLesson.materials,
+            );
+
             setLessonLinks(existingLinks);
             setShowLinks(existingLinks.length > 0);
+            setExistingLessonMaterials(existingMaterials);
+            setShowMaterials(existingMaterials.length > 0);
           }
 
           setStep("lesson");
@@ -955,6 +1001,7 @@ export default function NewTeacherCoursePage() {
       setTargetLessonId("");
       setDraftCourseId("");
       setExistingLessons([]);
+      setExistingLessonMaterials([]);
       setLastSavedAt("");
       setAutosaveState("idle");
       return;
@@ -1356,6 +1403,48 @@ export default function NewTeacherCoursePage() {
 
   const removeLessonFile = (targetIndex: number) => {
     setLessonFiles((prev) => prev.filter((_, index) => index !== targetIndex));
+  };
+
+  const removeExistingLessonMaterial = async (
+    material: ExistingLessonMaterial,
+  ) => {
+    const lessonId = targetLessonId.trim();
+    const courseId = (isEditMode ? editingCourseId : draftCourseId).trim();
+
+    if (!courseId || !lessonId || !material.canDelete) {
+      setError("Не удалось определить материал для удаления");
+      return;
+    }
+
+    setDeletingExistingMaterialId(material.id);
+    setError("");
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/teacher/courses/${courseId}/lessons/${lessonId}/materials/${material.id}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        },
+      );
+
+      const data = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        setError(data.message ?? "Не удалось удалить материал");
+        toast.error(data.message ?? "Не удалось удалить материал");
+        return;
+      }
+
+      setExistingLessonMaterials((prev) =>
+        prev.filter((item) => item.id !== material.id),
+      );
+      toast.success("Материал удален");
+    } catch {
+      setError("Ошибка сети при удалении материала");
+      toast.error("Ошибка сети при удалении материала");
+    } finally {
+      setDeletingExistingMaterialId("");
+    }
   };
 
   const handleLessonFilesChange = (files: FileList | null) => {
@@ -2022,6 +2111,57 @@ export default function NewTeacherCoursePage() {
                         Можно прикрепить любые типы файлов без ограничения по
                         типу.
                       </p>
+
+                      {existingLessonMaterials.length > 0 ? (
+                        <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                          {existingLessonMaterials.map((material) => (
+                            <li
+                              key={material.id}
+                              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2"
+                            >
+                              {material.url ? (
+                                <a
+                                  href={material.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="min-w-0 truncate text-left text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900"
+                                  title="Открыть сохраненный материал"
+                                >
+                                  {material.title}
+                                </a>
+                              ) : (
+                                <span
+                                  className="min-w-0 truncate"
+                                  title={material.title}
+                                >
+                                  {material.title}
+                                </span>
+                              )}
+                              {material.canDelete ? (
+                                <button
+                                  type="button"
+                                  disabled={
+                                    deletingExistingMaterialId === material.id
+                                  }
+                                  onClick={() =>
+                                    void removeExistingLessonMaterial(material)
+                                  }
+                                  className="shrink-0 whitespace-nowrap rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                                >
+                                  {deletingExistingMaterialId === material.id
+                                    ? "Удаление..."
+                                    : "Удалить"}
+                                </button>
+                              ) : (
+                                <span className="shrink-0 whitespace-nowrap rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600">
+                                  сохранено
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+
                       <input
                         type="file"
                         className="mt-2 w-full text-sm text-slate-700"
