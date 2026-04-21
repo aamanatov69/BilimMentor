@@ -354,15 +354,14 @@ export default function StudentCourseDetailsPage() {
   );
 
   const filteredAssignments = useMemo(() => {
-    if (!courseId) return [];
+    if (!courseId || !selectedLessonId) return [];
     return assignments.filter(
       (item) =>
         asString(item.id) &&
         asString(item.course?.id) === courseId &&
-        (!item.lessonId ||
-          lessons.some((lesson) => lesson.id === item.lessonId)),
+        asString(item.lessonId) === selectedLessonId,
     );
-  }, [assignments, courseId, lessons]);
+  }, [assignments, courseId, selectedLessonId]);
 
   const lessonUrlTransform = useMemo(
     () => buildAttachmentUrlTransform(selectedLesson?.materials ?? []),
