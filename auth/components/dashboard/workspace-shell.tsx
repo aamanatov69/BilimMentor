@@ -875,7 +875,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
           </nav>
         </aside>
 
-        <main className="min-h-[calc(100vh-4rem)] flex-1 p-4 pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:p-5 md:pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:p-6 lg:pb-6">
+        <main className="min-h-[calc(100vh-4rem)] min-w-0 flex-1 p-4 pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:p-5 md:pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:p-6 lg:pb-6">
           <nav className="mb-4 flex items-center gap-1 overflow-x-auto pb-1 text-xs text-slate-500">
             {breadcrumbs.map((item, index) => (
               <div
