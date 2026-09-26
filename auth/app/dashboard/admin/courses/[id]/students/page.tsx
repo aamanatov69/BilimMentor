@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -34,7 +36,7 @@ export default function AdminCourseStudentsPage() {
 
     setError("");
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/admin/courses/${id}/students`, {
           credentials: "include",
         },
@@ -64,7 +66,7 @@ export default function AdminCourseStudentsPage() {
     setBusyStudentId(studentId);
     setError("");
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/admin/courses/${id}/students/${studentId}`, {
           credentials: "include",
           method: "PATCH",

@@ -3,11 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "next dev -p 30001",
     "build": "next build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "start": "next start -p 3000",
     "test:smoke": "node scripts/smoke.mjs",
+    "test:ready": "node scripts/smoke.mjs --ready",
+    "test:upload": "node --experimental-strip-types --test scripts/upload-image.test.mjs",
+    "test:api-client": "node --experimental-strip-types --test scripts/api-client.test.mjs",
+    "test:api-fetch": "node --experimental-strip-types --test scripts/api-fetch.test.mjs",
+    "test:browser": "node scripts/browser-smoke.cjs",
+    "test:unit": "node --experimental-strip-types --test scripts/api-client.test.mjs scripts/api-fetch.test.mjs scripts/assignment-attachments.test.mjs scripts/insert-uploaded-images.test.mjs scripts/login-destination.test.mjs scripts/upload-image.test.mjs",
+    "test:login": "node --experimental-strip-types --test scripts/login-destination.test.mjs",
     "test:smoke:e2e": "node scripts/smoke-e2e.mjs"
   },
   "dependencies": {
@@ -27,6 +34,7 @@
     "react-markdown": "^10.1.0",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
+    "sharp": "0.34.5",
     "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {

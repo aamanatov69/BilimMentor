@@ -11,6 +11,7 @@ interface TestUser {
   phone: string;
   passwordHash: string;
   role: "student" | "teacher" | "admin";
+  isBlocked?: boolean;
   createdAt: Date;
 }
 
@@ -203,6 +204,10 @@ function resetDb() {
 }
 
 const prismaMock: any = {
+  $queryRaw: jest.fn(async () => [{ value: 1 }]),
+  submission: {
+    findUnique: jest.fn(async () => null),
+  },
   user: {
     count: jest.fn(async () => db.users.length),
     findUnique: jest.fn(async ({ where, select }: any) => {
@@ -527,6 +532,100 @@ describe("API integration tests", () => {
   });
 
   describe("Authentication", () => {
+    it("distinguishes process health from database readiness", async () => {
+      const { app } = require("../src/server");
+      expect((await request(app).get("/ready")).status).toBe(200);
+      prismaMock.$queryRaw.mockRejectedValueOnce(new Error("private connection details"));
+      const unavailable = await request(app).get("/ready");
+      expect(unavailable.status).toBe(503);
+      expect(unavailable.body).toEqual({ status: "not_ready", database: "unavailable" });
+      expect(unavailable.headers["cache-control"]).toBe("no-store");
+      expect((await request(app).get("/health")).status).toBe(200);
+    });
+    it("rejects empty or coerced grades but accepts explicit zero as a valid score", async () => {
+      const { app } = require("../src/server");
+      const { createToken } = require("../src/utils/jwt");
+      const teacher = db.users.find((user) => user.role === "teacher")!;
+      const token = createToken(teacher);
+      for (const score of ["", "   ", null, false, [], {}, -1, 101]) {
+        const response = await request(app).patch("/api/teacher/submissions/missing/grade")
+          .set("Authorization", `Bearer ${token}`).send({ score });
+        expect(response.status).toBe(400);
+      }
+      const valid = await request(app).patch("/api/teacher/submissions/missing/grade")
+        .set("Authorization", `Bearer ${token}`).send({ score: 0 });
+      expect(valid.status).toBe(404);
+    });
+    it("restricts the paginated course list to administrators", async () => {
+      const { app } = require("../src/server");
+      const { createToken } = require("../src/utils/jwt");
+      const student = db.users.find((user) => user.role === "student")!;
+      expect((await request(app).get("/api/admin/courses")).status).toBe(401);
+      const response = await request(app).get("/api/admin/courses")
+        .set("Authorization", `Bearer ${createToken(student)}`);
+      expect(response.status).toBe(403);
+    });
+    it("rejects existing tokens for blocked and deleted users", async () => {
+      const { app } = require("../src/server");
+      const { createToken } = require("../src/utils/jwt");
+      const user = db.users[0];
+      const token = createToken(user);
+      user.isBlocked = true;
+      const blocked = await request(app).get("/api/me").set("Authorization", `Bearer ${token}`);
+      expect(blocked.status).toBe(403);
+      db.users = db.users.filter((item) => item.id !== user.id);
+      const deleted = await request(app).get("/api/me").set("Authorization", `Bearer ${token}`);
+      expect(deleted.status).toBe(401);
+    });
+
+    it("revokes old sessions when the password hash changes and accepts a fresh session", async () => {
+      const { app } = require("../src/server");
+      const { createToken } = require("../src/utils/jwt");
+      const user = db.users[0];
+      const oldToken = createToken(user);
+      expect((await request(app).get("/api/me").set("Authorization", `Bearer ${oldToken}`)).status).toBe(200);
+      const updatedUser = db.users.find((item) => item.id === user.id)!;
+      updatedUser.passwordHash = await bcrypt.hash("new-test-password", 4);
+      expect((await request(app).get("/api/me").set("Authorization", `Bearer ${oldToken}`)).status).toBe(401);
+      expect((await request(app).get("/api/me").set("Authorization", `Bearer ${createToken(updatedUser)}`)).status).toBe(200);
+    });
+
+    it("does not change the session when recovery credentials belong to another account", async () => {
+      const { app } = require("../src/server");
+      const response = await request(app).post("/api/auth/login").send({
+        identifier: "student@bilimmentor.local", password: "password123", expectedUserId: "u2",
+      });
+      expect(response.status).toBe(409);
+      expect(response.headers["set-cookie"]).toBeUndefined();
+    });
+
+    it("rejects admin access with an old token after demotion", async () => {
+      const { app } = require("../src/server");
+      const { createToken } = require("../src/utils/jwt");
+      const admin = db.users.find((user) => user.role === "admin")!;
+      const token = createToken(admin);
+      admin.role = "student";
+      const response = await request(app).get("/api/admin/users")
+        .set("Authorization", `Bearer ${token}`);
+      expect(response.status).toBe(403);
+    });
+
+    it("creates distinct users during concurrent registration", async () => {
+      const { app } = require("../src/server");
+      const responses = await Promise.all([0, 1, 2].map((index) =>
+        request(app).post("/api/auth/register").send({
+          fullName: `Concurrent Student ${index}`,
+          email: `concurrent${index}@bilimmentor.local`,
+          phone: `+7999000130${index}`,
+          password: "password123",
+          role: "student",
+        })
+      ));
+      expect(responses.map((response) => response.status)).toEqual([201, 201, 201]);
+      expect(new Set(responses.map((response) => response.body.user.id)).size).toBe(3);
+      expect(prismaMock.user.findMany).not.toHaveBeenCalled();
+    });
+
     it("registers, logs in and validates token", async () => {
       const { app } = require("../src/server");
 

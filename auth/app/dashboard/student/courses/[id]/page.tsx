@@ -1,9 +1,12 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
 import "katex/dist/katex.min.css";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { apiJson, apiErrorMessage } from "@/lib/api-client";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
@@ -27,6 +30,7 @@ type CourseData = {
   progress?: number;
   modules?: CourseModule[];
   studentProgress?: StudentProgress;
+  lastViewedLessonId?: string | null;
 };
 
 type LessonMaterial = {
@@ -243,12 +247,23 @@ function extractLessons(modules?: CourseModule[]) {
 }
 
 export default function StudentCourseDetailsPage() {
+  return <Suspense fallback={<p role="status">Загрузка урока…</p>}><StudentCourseDetailsContent /></Suspense>;
+}
+
+function StudentCourseDetailsContent() {
   const params = useParams();
   const courseId = String(params.id ?? "");
 
   const [course, setCourse] = useState<CourseData | null>(null);
   const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
-  const [selectedLessonId, setSelectedLessonId] = useState("");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedLessonId = searchParams.get("lesson") ?? "";
+  const setSelectedLessonId = (id: string) => {
+    const query = new URLSearchParams(searchParams.toString());
+    query.set("lesson", id);
+    router.replace(`/dashboard/student/courses/${courseId}?${query}`, { scroll: false });
+  };
   const [lessonFocusMode, setLessonFocusMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -261,11 +276,11 @@ export default function StudentCourseDetailsPage() {
 
     try {
       const [courseResponse, assignmentsResponse] = await Promise.all([
-        fetch(`${API_URL}/api/courses/${courseId}`, {
+        apiFetch(`${API_URL}/api/courses/${courseId}`, {
           credentials: "include",
           cache: "no-store",
         }),
-        fetch(`${API_URL}/api/student/assignments`, {
+        apiFetch(`${API_URL}/api/student/assignments`, {
           credentials: "include",
         }),
       ]);
@@ -308,13 +323,28 @@ export default function StudentCourseDetailsPage() {
   );
 
   useEffect(() => {
-    if (!selectedLessonId && lessons.length > 0) {
-      setSelectedLessonId(lessons[0].id);
+    if (lessons.length > 0 && !lessons.some((lesson) => lesson.id === selectedLessonId)) {
+      setSelectedLessonId(lessons.find((lesson) => lesson.id === course?.lastViewedLessonId)?.id ?? lessons[0].id);
     }
-  }, [lessons, selectedLessonId]);
+  }, [lessons, selectedLessonId, course?.lastViewedLessonId]);
 
   const selectedLesson =
     lessons.find((lesson) => lesson.id === selectedLessonId) ?? null;
+
+  const [viewSaveError, setViewSaveError] = useState("");
+  const [viewSaveRetry, setViewSaveRetry] = useState(0);
+  const viewedLessonId = selectedLesson?.id;
+  useEffect(() => {
+    if (!viewedLessonId || course?.id !== courseId) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      setViewSaveError("");
+      void apiJson(`/api/student/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(viewedLessonId)}/view`, {
+        method: "POST", signal: controller.signal,
+      }).catch((error) => { if (!controller.signal.aborted) setViewSaveError(apiErrorMessage(error)); });
+    }, 500);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [courseId, course?.id, viewedLessonId, viewSaveRetry]);
 
   const selectedLessonIndex = useMemo(
     () => lessons.findIndex((lesson) => lesson.id === selectedLessonId),
@@ -372,7 +402,7 @@ export default function StudentCourseDetailsPage() {
     setBusyLessonId(lessonId);
     setError("");
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/student/courses/${courseId}/lessons/${lessonId}/completion`,
         {
           method: "POST",
@@ -384,6 +414,7 @@ export default function StudentCourseDetailsPage() {
 
       const data = (await response.json()) as {
         studentProgress?: StudentProgress;
+  lastViewedLessonId?: string | null;
         message?: string;
       };
 
@@ -468,6 +499,7 @@ export default function StudentCourseDetailsPage() {
 
   return (
     <main className="space-y-4">
+      {viewSaveError ? <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Не удалось запомнить просмотренный урок. {viewSaveError} <button type="button" className="min-h-11 px-3 underline" onClick={() => setViewSaveRetry((value) => value + 1)}>Повторить</button></p> : null}
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -483,7 +515,7 @@ export default function StudentCourseDetailsPage() {
               href="/dashboard/student/courses"
               className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
-              Назад
+              К списку курсов
             </Link>
             <button
               type="button"
@@ -561,7 +593,7 @@ export default function StudentCourseDetailsPage() {
                           {lesson.title}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
-                          {done ? "✔ завершен" : "в процессе"}
+                          {done ? "✔ Завершён" : selected ? "Текущий урок" : "Не завершён"}
                         </p>
                       </button>
                     );

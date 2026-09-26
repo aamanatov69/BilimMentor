@@ -49,7 +49,7 @@ async function getTokenPayload(
 
   try {
     const { payload } = await jwtVerify(token, secret);
-    if (!payload.role || typeof payload.role !== "string") {
+    if (!payload.role || typeof payload.role !== "string" || typeof payload.sessionStamp !== "string") {
       return null;
     }
 
@@ -71,15 +71,13 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const payload = await getTokenPayload(request);
 
-  if ((pathname === "/login" || pathname === "/register") && payload) {
-    return NextResponse.redirect(
-      new URL(roleToPath[payload.role], request.url),
-    );
-  }
+  // Login checks /api/me itself: a signed cookie can already be revoked by a password change.
 
   if (pathname.startsWith("/dashboard")) {
     if (!payload) {
-      return NextResponse.redirect(new URL("/login", request.url));
+      const loginUrl = new URL("/login", request.url);
+      loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
+      return NextResponse.redirect(loginUrl);
     }
 
     if (pathname.startsWith("/dashboard/admin") && payload.role !== "admin") {

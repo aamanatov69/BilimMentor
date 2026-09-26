@@ -1,5 +1,6 @@
 "use client";
 
+import { loginDestination } from "@/lib/login-destination";
 import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +24,7 @@ export const dynamic = "force-dynamic";
 
 function LoginPageContent() {
   const searchParams = useSearchParams();
+  const nextDestination = searchParams.get("next");
   const isResetSuccess = searchParams.get("reset") === "1";
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -55,12 +57,7 @@ function LoginPageContent() {
           return;
         }
 
-        const destination =
-          role === "admin"
-            ? "/dashboard/admin"
-            : role === "teacher"
-              ? "/dashboard/teacher"
-              : "/dashboard/student";
+        const destination = loginDestination(nextDestination, role);
 
         window.location.assign(destination);
       } catch {
@@ -73,7 +70,7 @@ function LoginPageContent() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [nextDestination]);
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -105,17 +102,12 @@ function LoginPageContent() {
         return;
       }
 
-      const destination =
-        data.user.role === "admin"
-          ? "/dashboard/admin"
-          : data.user.role === "teacher"
-            ? "/dashboard/teacher"
-            : "/dashboard/student";
+      const destination = loginDestination(nextDestination, data.user.role);
 
       // Use full-page navigation to avoid cookie race conditions after cross-origin login.
       window.location.assign(destination);
     } catch {
-      setError("Сервер недоступен. Убедитесь, что API запущен на порту 4000.");
+      setError("Не удалось связаться с сервером. Проверьте подключение и попробуйте снова.");
     } finally {
       setLoading(false);
     }

@@ -1,5 +1,6 @@
 import type { UserRole } from "@prisma/client";
 import jwt from "jsonwebtoken";
+import { createHmac } from "crypto";
 import type { JwtPayload } from "../types/auth";
 
 const JWT_EXPIRES_IN = "1d";
@@ -49,8 +50,14 @@ export type VerifiedCourseInvite = {
   expiresAt: string | null;
 };
 
-export function createToken(user: { id: string; role: UserRole }) {
-  return jwt.sign({ sub: user.id, role: user.role }, JWT_SECRET, {
+export function sessionStamp(user: { id: string; passwordHash: string }) {
+  return createHmac("sha256", JWT_SECRET)
+    .update(JSON.stringify(["session", user.id, user.passwordHash]))
+    .digest("hex");
+}
+
+export function createToken(user: { id: string; role: UserRole; passwordHash: string }) {
+  return jwt.sign({ sub: user.id, role: user.role, sessionStamp: sessionStamp(user) }, JWT_SECRET, {
     expiresIn: JWT_EXPIRES_IN,
   });
 }
@@ -58,7 +65,7 @@ export function createToken(user: { id: string; role: UserRole }) {
 export function decodeToken(token: string): JwtPayload | null {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    if (typeof decoded === "string" || !decoded.sub || !decoded.role) {
+    if (typeof decoded === "string" || !decoded.sub || !decoded.role || typeof decoded.sessionStamp !== "string") {
       return null;
     }
 
@@ -73,6 +80,7 @@ export function decodeToken(token: string): JwtPayload | null {
     return {
       sub: String(decoded.sub),
       role: decoded.role,
+      sessionStamp: decoded.sessionStamp,
     };
   } catch {
     return null;

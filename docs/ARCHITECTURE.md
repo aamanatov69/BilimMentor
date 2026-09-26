@@ -1,32 +1,21 @@
-﻿# Архитектура BilimMentor
+# Архитектура BilimMentor
 
-## Контекст
+- `auth`: Next.js App Router, React, Tailwind CSS; публичные страницы и кабинеты трёх ролей.
+- `api`: Express и TypeScript; маршруты, контроллеры и сервисы разделены по предметным областям.
+- PostgreSQL и Prisma: схема и миграции находятся в `api/prisma`. В API-тестах Prisma подменяется.
 
-Система состоит из backend API и нескольких frontend-приложений dashboard.
+## Авторизация
 
-## Компоненты
+Вход устанавливает HttpOnly cookie bilimMentorToken. Next.js middleware проверяет JWT и роль из токена. API дополнительно проверяет существование пользователя, блокировку и актуальную роль в БД. Маршрутизация frontend после изменения роли и отзыв всех сессий после смены пароля требуют дальнейшей работы.
 
-### 1. API (`/api`)
+## Данные и интерфейс
 
-- Express + TypeScript
-- REST endpoints для авторизации и курсов
-- In-memory хранилище для MVP
+Уроки хранятся в JSON modules курса, прогресс — в StudentLessonProgress, работы и оценки — в Submission и Grade. Новые ID основаны на UUID, существующие ID сохраняются.
 
-### 2. Auth UI (`/dashboard/auth`)
+WorkspaceShell объединяет навигацию, поиск и уведомления. Редактор сохраняет черновик в localStorage текущего устройства. Обработчик загрузки проверяет учётную запись через API, декодирует PNG/JPEG/WebP/GIF библиотекой sharp и сохраняет перекодированный WebP в public/uploads. Размер ограничен 10 МБ, суммарное число пикселей кадров — 24 млн.
 
-- Next.js App Router
-- Формы Login/Register
-- Современный UI на Tailwind + shadcn/ui
+## Проверки
 
-## Поток данных
+В обоих приложениях есть typecheck. API использует Jest/Supertest с подменой БД. В auth тест изображений запускается через npm run test:upload (Node.js 22.6+ с поддержкой удаления типов). HTTP smoke проверяет доступность страниц, но не заменяет браузерные сценарии.
 
-1. Пользователь регистрируется или входит в auth UI.
-2. Auth UI отправляет запросы в API.
-
-## Следующий этап
-
-- Подключить БД (PostgreSQL + Prisma)
-- Добавить JWT/refresh токены
-- Добавить роли (student, teacher, admin)
-
-
+План: [IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md).

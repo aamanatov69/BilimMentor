@@ -1,8 +1,15 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
+import { useLinkedRecord } from "@/lib/use-linked-record";
+
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { AssignmentsSection } from "./assignments-section";
+import { CourseDetailsForm, getCourseLevelLabel } from "./course-details-form";
+import { LessonsSection } from "./lessons-section";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -44,12 +51,6 @@ type CourseDetails = {
   modules?: Array<Record<string, unknown>>;
   assignments?: Array<Record<string, unknown>>;
 };
-
-function getCourseLevelLabel(level: CourseLevel) {
-  if (level === "beginner") return "Начальный";
-  if (level === "intermediate") return "Средний";
-  return "Продвинутый";
-}
 
 function toDatetimeLocalValue(isoValue: string) {
   if (!isoValue) {
@@ -173,7 +174,7 @@ export default function AdminEditCoursePage() {
     setError("");
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/admin/courses/${courseId}/details`,
         {
           credentials: "include",
@@ -236,7 +237,7 @@ export default function AdminEditCoursePage() {
     setMessage("");
 
     try {
-      const response = await fetch(`${API_URL}/api/admin/courses/${courseId}`, {
+      const response = await apiFetch(`${API_URL}/api/admin/courses/${courseId}`, {
         method: "PUT",
         credentials: "include",
         headers: {
@@ -293,7 +294,7 @@ export default function AdminEditCoursePage() {
     setMessage("");
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/admin/courses/${courseId}/lessons/${lesson.id}`,
         {
           method: "PUT",
@@ -329,7 +330,7 @@ export default function AdminEditCoursePage() {
     setMessage("");
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/admin/courses/${courseId}/lessons/${lessonId}`,
         {
           method: "DELETE",
@@ -362,7 +363,7 @@ export default function AdminEditCoursePage() {
     setMessage("");
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/admin/courses/${courseId}/lessons/${lessonId}/materials/${materialId}`,
         {
           method: "DELETE",
@@ -418,7 +419,7 @@ export default function AdminEditCoursePage() {
     setMessage("");
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/admin/assignments/${assignment.id}`,
         {
           method: "PUT",
@@ -458,7 +459,7 @@ export default function AdminEditCoursePage() {
     setMessage("");
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/admin/assignments/${assignmentId}`,
         {
           method: "DELETE",
@@ -494,7 +495,7 @@ export default function AdminEditCoursePage() {
     setMessage("");
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/admin/courses/${courseId}/lessons`,
         {
           method: "POST",
@@ -530,6 +531,8 @@ export default function AdminEditCoursePage() {
     () => (isPublished ? "Опубликован" : "Черновик"),
     [isPublished],
   );
+
+  useLinkedRecord(lessons.map((lesson) => lesson.id).join("|"));
 
   return (
     <main className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
@@ -688,6 +691,8 @@ export default function AdminEditCoursePage() {
                 lessons.map((lesson, index) => (
                   <article
                     key={lesson.id}
+                    data-linked-record={`lesson-${lesson.id}`}
+                    tabIndex={-1}
                     className="rounded-lg border border-slate-200 bg-slate-50 p-3"
                   >
                     <p className="mb-2 text-xs font-semibold text-slate-500">

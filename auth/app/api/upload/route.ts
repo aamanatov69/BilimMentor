@@ -1,30 +1,50 @@
+import { jwtVerify } from "jose";
+import { MAX_UPLOAD_SIZE_BYTES, sanitizeUploadImage } from "@/lib/upload-image";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { join } from "node:path";
 
 export const runtime = "nodejs";
 
-const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+const JWT_SECRET = process.env.JWT_SECRET?.trim();
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET is required for upload route");
+}
+const secret = new TextEncoder().encode(JWT_SECRET);
 
-function extensionFromFile(file: File) {
-  const fromName = extname(file.name || "").toLowerCase();
-  if (fromName) {
-    return fromName;
+async function isAuthenticated() {
+  const token = (await cookies()).get("bilimMentorToken")?.value;
+  if (!token) {
+    return false;
   }
 
-  const mime = (file.type || "").toLowerCase();
-  if (mime === "image/png") return ".png";
-  if (mime === "image/jpeg") return ".jpg";
-  if (mime === "image/webp") return ".webp";
-  if (mime === "image/gif") return ".gif";
-  if (mime === "image/svg+xml") return ".svg";
-
-  return ".png";
+  try {
+    const { payload } = await jwtVerify(token, secret);
+    if (!payload.sub || !["admin", "teacher", "student"].includes(String(payload.role))) return false;
+    const apiUrl = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL;
+    if (!apiUrl) throw new Error("API URL is required for upload authentication");
+    const response = await fetch(`${apiUrl.replace(/\/$/, "")}/api/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(5000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 export async function POST(request: Request) {
   try {
+    if (!(await isAuthenticated())) {
+      return NextResponse.json(
+        { message: "Требуется авторизация" },
+        { status: 401 },
+      );
+    }
+
     const formData = await request.formData();
     const fileValue = formData.get("file");
 
@@ -32,7 +52,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Файл не найден" }, { status: 400 });
     }
 
-    if (!fileValue.type.startsWith("image/")) {
+    if (
+      !fileValue.type.startsWith("image/") ||
+      fileValue.type.toLowerCase() === "image/svg+xml"
+    ) {
       return NextResponse.json(
         { message: "Можно загружать только изображения" },
         { status: 400 },
@@ -46,13 +69,20 @@ export async function POST(request: Request) {
       );
     }
 
-    const extension = extensionFromFile(fileValue);
-    const fileName = `${Date.now()}-${randomUUID()}${extension}`;
+    let bytes: Buffer;
+    try {
+      bytes = await sanitizeUploadImage(Buffer.from(await fileValue.arrayBuffer()), fileValue.type);
+    } catch {
+      return NextResponse.json(
+        { message: "Не удалось обработать изображение. Используйте исправный PNG, JPEG, WebP или GIF до 10 МБ и 24 млн пикселей суммарно по кадрам." },
+        { status: 400 },
+      );
+    }
+    const fileName = `${randomUUID()}.webp`;
 
     const uploadDir = join(process.cwd(), "public", "uploads");
     await mkdir(uploadDir, { recursive: true });
 
-    const bytes = Buffer.from(await fileValue.arrayBuffer());
     await writeFile(join(uploadDir, fileName), bytes);
 
     return NextResponse.json({ url: `/uploads/${fileName}` });

@@ -1,4 +1,6 @@
-﻿"use client";
+"use client";
+
+import { apiFetch } from "@/lib/api-client";
 
 import { useEffect, useState } from "react";
 
@@ -34,7 +36,7 @@ export default function TeacherNotificationsPage() {
     if (isMarking) return;
     setIsMarking(id);
     try {
-      const response = await fetch(`${API_URL}/api/notifications/${id}/read`, {
+      const response = await apiFetch(`${API_URL}/api/notifications/${id}/read`, {
         method: "PATCH",
         credentials: "include",
       });
@@ -55,7 +57,7 @@ export default function TeacherNotificationsPage() {
   const markAllAsRead = async () => {
     if (items.every((item) => item.isRead)) return;
     try {
-      const response = await fetch(`${API_URL}/api/notifications/read/all`, {
+      const response = await apiFetch(`${API_URL}/api/notifications/read/all`, {
         method: "PATCH",
         credentials: "include",
       });
@@ -70,7 +72,7 @@ export default function TeacherNotificationsPage() {
   useEffect(() => {
     const loadNotifications = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/notifications`, {
+        const response = await apiFetch(`${API_URL}/api/notifications`, {
           credentials: "include",
         });
         const data = (await response.json()) as {
@@ -92,7 +94,7 @@ export default function TeacherNotificationsPage() {
 
         // Auto mark all as read after loading
         try {
-          await fetch(`${API_URL}/api/notifications/read/all`, {
+          await apiFetch(`${API_URL}/api/notifications/read/all`, {
             method: "PATCH",
             credentials: "include",
           });

@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -36,7 +38,7 @@ export default function AdminRequestsPage() {
       setError("");
 
       try {
-        const response = await fetch(
+        const response = await apiFetch(
           `${API_URL}/api/admin/course-access-requests?status=pending`,
           {
             credentials: "include",

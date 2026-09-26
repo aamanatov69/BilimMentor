@@ -11,7 +11,7 @@ function getRequiredDatabaseUrl() {
   return databaseUrl;
 }
 
-const pool = new Pool({ connectionString: getRequiredDatabaseUrl() });
+const pool = new Pool({ connectionString: getRequiredDatabaseUrl(), connectionTimeoutMillis: 5000 });
 const adapter = new PrismaPg(pool);
 
 const globalForPrisma = globalThis as unknown as {

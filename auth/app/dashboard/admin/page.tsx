@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -30,7 +32,7 @@ export default function AdminDashboardPage() {
       setLoading(true);
       setError("");
       try {
-        const response = await fetch(`${API_URL}/api/admin/reports`, {
+        const response = await apiFetch(`${API_URL}/api/admin/reports`, {
           credentials: "include",
         });
 

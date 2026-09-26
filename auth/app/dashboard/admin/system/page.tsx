@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
 import { useEffect, useMemo, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -22,8 +24,8 @@ export default function AdminSystemPage() {
 
       try {
         const [healthRes, reportsRes] = await Promise.all([
-          fetch(`${API_URL}/health`),
-          fetch(`${API_URL}/api/admin/reports`, {
+          apiFetch(`${API_URL}/health`),
+          apiFetch(`${API_URL}/api/admin/reports`, {
           credentials: "include",
           }),
         ]);

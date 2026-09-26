@@ -1,0 +1,172 @@
+import { UserRole } from "@prisma/client";
+import { Router } from "express";
+import { adminController } from "../controllers/adminController";
+import { asyncHandler } from "../middleware/asyncHandler";
+import { requireRole, verifyToken } from "../middleware/auth";
+
+export const adminRoutes = Router();
+
+adminRoutes.get(
+  "/api/admin/courses",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminListCourses),
+);
+
+adminRoutes.get(
+  "/api/admin/course-access-requests",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminListCourseAccessRequests),
+);
+adminRoutes.get(
+  "/api/admin/overview",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminOverview),
+);
+adminRoutes.get(
+  "/api/admin/users",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminListUsers),
+);
+adminRoutes.post(
+  "/api/admin/users",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminCreateUser),
+);
+adminRoutes.put(
+  "/api/admin/users/:id",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminUpdateUser),
+);
+adminRoutes.patch(
+  "/api/admin/users/:id/block",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminBlockUser),
+);
+adminRoutes.patch(
+  "/api/admin/users/:id/unblock",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminUnblockUser),
+);
+adminRoutes.patch(
+  "/api/admin/users/:id/password",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminResetUserPassword),
+);
+adminRoutes.delete(
+  "/api/admin/users/:id",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminDeleteUser),
+);
+adminRoutes.post(
+  "/api/admin/courses",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminCreateCourse),
+);
+adminRoutes.put(
+  "/api/admin/courses/:id",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminUpdateCourse),
+);
+adminRoutes.get(
+  "/api/admin/courses/:id/details",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminCourseDetails),
+);
+adminRoutes.post(
+  "/api/admin/courses/:id/lessons",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminCreateLesson),
+);
+adminRoutes.put(
+  "/api/admin/courses/:id/lessons/:lessonId",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminUpdateLesson),
+);
+adminRoutes.delete(
+  "/api/admin/courses/:id/lessons/:lessonId",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminDeleteLesson),
+);
+adminRoutes.delete(
+  "/api/admin/courses/:id/lessons/:lessonId/materials/:materialId",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminDeleteLessonMaterial),
+);
+adminRoutes.put(
+  "/api/admin/assignments/:id",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminUpdateAssignment),
+);
+adminRoutes.delete(
+  "/api/admin/assignments/:id",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminDeleteAssignment),
+);
+adminRoutes.delete(
+  "/api/admin/courses/:id",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminDeleteCourse),
+);
+adminRoutes.post(
+  "/api/admin/courses/bulk",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminBulkCourses),
+);
+adminRoutes.get(
+  "/api/admin/courses/:id/students",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminCourseStudents),
+);
+adminRoutes.patch(
+  "/api/admin/courses/:id/students/:studentId",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminSetCourseStudentEnrollment),
+);
+adminRoutes.get(
+  "/api/admin/reports",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminReports),
+);
+adminRoutes.post(
+  "/api/admin/system/backup",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminRunBackup),
+);
+adminRoutes.post(
+  "/api/admin/system/restore",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminRunRestore),
+);
+adminRoutes.get(
+  "/api/admin/settings/overview",
+  verifyToken,
+  requireRole([UserRole.admin]),
+  asyncHandler(adminController.adminSettingsOverview),
+);
+

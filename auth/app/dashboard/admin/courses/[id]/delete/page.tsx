@@ -1,4 +1,6 @@
-﻿"use client";
+"use client";
+
+import { apiFetch } from "@/lib/api-client";
 
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { useParams, useRouter } from "next/navigation";
@@ -17,7 +19,7 @@ export default function AdminDeleteCoursePage() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`${API_URL}/api/admin/courses/${id}`, {
+      const response = await apiFetch(`${API_URL}/api/admin/courses/${id}`, {
         credentials: "include",
         method: "DELETE",
       });

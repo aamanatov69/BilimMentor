@@ -108,6 +108,15 @@ body {
   @apply bg-background text-foreground antialiased;
 }
 
+[data-linked-record] {
+  scroll-margin-top: 6rem;
+}
+
+[data-linked-active="true"] {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
 .katex-display {
   margin: 0.9rem 0;
   overflow-x: auto;

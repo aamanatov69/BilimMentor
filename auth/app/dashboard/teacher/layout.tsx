@@ -1,17 +1,18 @@
 "use client";
 
 import { WorkspaceShell } from "@/components/dashboard/workspace-shell";
-import { Bell, GraduationCap, Home, Star, Users } from "lucide-react";
+import { Bell, BookOpen, GraduationCap, Home, Star, Users } from "lucide-react";
 
 const sidebarItems = [
   { href: "/dashboard/teacher", label: "Главная", icon: Home, exact: true },
+  { href: "/dashboard/teacher/courses", label: "Курсы", icon: BookOpen },
   { href: "/dashboard/teacher/students", label: "Студенты", icon: Users },
-  { href: "/dashboard/teacher/grades", label: "Оценки", icon: Star },
   {
     href: "/dashboard/teacher/assignments",
-    label: "Работы на проверку",
+    label: "Проверка",
     icon: GraduationCap,
   },
+  { href: "/dashboard/teacher/grades", label: "Оценки", icon: Star },
   {
     href: "/dashboard/teacher/notifications",
     label: "Уведомления",

@@ -1,12 +1,15 @@
 "use client";
 
 import "katex/dist/katex.min.css";
+import { LoadError } from "@/components/ui/load-error";
+import { apiJson, apiErrorMessage } from "@/lib/api-client";
+import { insertUploadedImages } from "@/lib/insert-uploaded-images";
+import { attachmentValidationError } from "@/lib/assignment-attachments";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 type SubmissionAttachment = {
   name: string;
@@ -140,38 +143,30 @@ export default function StudentAssignmentsPage() {
   const [rows, setRows] = useState<StudentAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [imageUploads, setImageUploads] = useState<Record<string, number>>({});
+  const [fileReads, setFileReads] = useState<Record<string, number>>({});
 
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [savedAnswers, setSavedAnswers] = useState<Record<string, string>>({});
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({});
   const [attachmentDrafts, setAttachmentDrafts] = useState<
     Record<string, AttachmentDraft[]>
   >({});
   const textareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const readingAssignments = useRef(new Set<string>());
 
   const loadRows = async () => {
     setLoading(true);
-    setError("");
+    setLoadError("");
 
     try {
-      const response = await fetch(`${API_URL}/api/student/assignments`, {
-        credentials: "include",
-      });
-
-      const data = (await response.json()) as {
-        assignments?: StudentAssignment[];
-        message?: string;
-      };
-
-      if (!response.ok) {
-        setError(data.message ?? "Не удалось загрузить задания");
-        return;
-      }
+      const data = await apiJson<{ assignments?: StudentAssignment[] }>("/api/student/assignments");
 
       const assignments = data.assignments ?? [];
       setRows(assignments);
-      setAnswerDrafts(
-        Object.fromEntries(
+      const serverAnswers = Object.fromEntries(
           assignments.map((item) => {
             const parts = [item.submission?.text ?? ""];
             const formula = (item.submission?.formula ?? "").trim();
@@ -185,10 +180,11 @@ export default function StudentAssignmentsPage() {
 
             return [item.id, parts.join("\n").trim()];
           }),
-        ),
-      );
-    } catch {
-      setError("Ошибка сети");
+        );
+      setSavedAnswers(serverAnswers);
+      setAnswerDrafts((previous) => ({ ...serverAnswers, ...previous }));
+    } catch (error) {
+      setLoadError(apiErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -197,6 +193,22 @@ export default function StudentAssignmentsPage() {
   useEffect(() => {
     void loadRows();
   }, []);
+
+  const hasUnsavedAnswers = Object.entries(answerDrafts).some(
+    ([id, value]) => value.trim() !== (savedAnswers[id] ?? "").trim(),
+  ) || Object.values(attachmentDrafts).some((files) => files.length > 0)
+    || Object.values(imageUploads).some((count) => count > 0)
+    || Object.values(fileReads).some((count) => count > 0);
+
+  useEffect(() => {
+    if (!hasUnsavedAnswers) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [hasUnsavedAnswers]);
 
   const pendingRows = useMemo(
     () => rows.filter((item) => !item.submission && !isOverdue(item.dueAt)),
@@ -218,12 +230,29 @@ export default function StudentAssignmentsPage() {
     [rows, activeCardId],
   );
 
+  const readOnlyReason = activeAssignment?.course.completedByTeacher
+    ? "Курс завершён. Доступен только просмотр задания и ответа."
+    : activeAssignment && isOverdue(activeAssignment.dueAt)
+      ? "Срок сдачи прошёл. Доступен только просмотр задания и ответа."
+      : "";
+
   const handleSelectFiles = async (
     assignmentId: string,
-    files: FileList | null,
+    files: File[],
   ) => {
     if (!files || files.length === 0) return;
-
+    if (readingAssignments.current.has(assignmentId)) {
+      setError("Дождитесь подготовки выбранных файлов перед добавлением следующих.");
+      return;
+    }
+    const validationError = attachmentValidationError([...(attachmentDrafts[assignmentId] ?? []), ...files]);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    readingAssignments.current.add(assignmentId);
+    setFileReads((previous) => ({ ...previous, [assignmentId]: (previous[assignmentId] ?? 0) + 1 }));
+    setError("");
     try {
       const mapped = await Promise.all(
         Array.from(files).map(async (file) => ({
@@ -240,12 +269,28 @@ export default function StudentAssignmentsPage() {
       }));
     } catch {
       setError("Не удалось прочитать вложения");
+    } finally {
+      readingAssignments.current.delete(assignmentId);
+      setFileReads((previous) => ({ ...previous, [assignmentId]: Math.max(0, (previous[assignmentId] ?? 1) - 1) }));
     }
   };
 
   const submitAssignment = async (assignment: StudentAssignment) => {
+    if (assignment.course.completedByTeacher) {
+      setError("Курс завершён. Отправка работ недоступна.");
+      return;
+    }
+    if (imageUploads[assignment.id] || fileReads[assignment.id]) {
+      setError("Дождитесь подготовки файлов и изображений перед отправкой ответа.");
+      return;
+    }
     const text = (answerDrafts[assignment.id] ?? "").trim();
     const attachments = attachmentDrafts[assignment.id] ?? [];
+    const validationError = attachmentValidationError(attachments);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
 
     if (isOverdue(assignment.dueAt)) {
       setError("Срок сдачи прошел");
@@ -261,8 +306,8 @@ export default function StudentAssignmentsPage() {
     setError("");
 
     try {
-      const response = await fetch(
-        `${API_URL}/api/student/assignments/${assignment.id}/submit`,
+      await apiJson(
+        `/api/student/assignments/${encodeURIComponent(assignment.id)}/submit`,
         {
           method: "POST",
           credentials: "include",
@@ -278,17 +323,15 @@ export default function StudentAssignmentsPage() {
         },
       );
 
-      const data = (await response.json()) as { message?: string };
-      if (!response.ok) {
-        setError(data.message ?? "Не удалось отправить работу");
-        return;
-      }
-
+      setSavedAnswers((previous) => ({ ...previous, [assignment.id]: text }));
+      setAttachmentDrafts((previous) => ({
+        ...previous,
+        [assignment.id]: (previous[assignment.id] ?? []).filter((file) => !attachments.includes(file)),
+      }));
       await loadRows();
       setActiveCardId(null);
-      setAttachmentDrafts((previous) => ({ ...previous, [assignment.id]: [] }));
-    } catch {
-      setError("Ошибка сети при отправке");
+    } catch (error) {
+      setError(apiErrorMessage(error));
     } finally {
       setBusy((previous) => ({ ...previous, [assignment.id]: false }));
     }
@@ -336,38 +379,42 @@ export default function StudentAssignmentsPage() {
     const current = answerDrafts[assignmentId] ?? "";
     const start = textarea?.selectionStart ?? current.length;
     const end = textarea?.selectionEnd ?? current.length;
+    setImageUploads((previous) => ({ ...previous, [assignmentId]: (previous[assignmentId] ?? 0) + 1 }));
 
     try {
       const uploadedUrls = await Promise.all(
         imageFiles.map((file) => uploadPastedImage(file)),
       );
 
-      const insertion = `\n${uploadedUrls.map((url) => `![image](${url})`).join("\n\n")}\n`;
-      const nextValue =
-        current.slice(0, start) + insertion + current.slice(end);
-
       setAnswerDrafts((previous) => ({
         ...previous,
-        [assignmentId]: nextValue,
+        [assignmentId]: insertUploadedImages(previous[assignmentId] ?? "", current, start, end, uploadedUrls),
       }));
-
-      window.requestAnimationFrame(() => {
-        const nextTextarea = textareaRefs.current[assignmentId];
-        if (!nextTextarea) {
-          return;
-        }
-        const cursor = start + insertion.length;
-        nextTextarea.focus();
-        nextTextarea.setSelectionRange(cursor, cursor);
-      });
     } catch (pasteError) {
       setError(
         pasteError instanceof Error
           ? pasteError.message
           : "Не удалось загрузить изображение",
       );
+    } finally {
+      setImageUploads((previous) => ({ ...previous, [assignmentId]: Math.max(0, (previous[assignmentId] ?? 1) - 1) }));
     }
   };
+
+  useEffect(() => {
+    if (loading) return;
+    const focusAssignment = () => {
+      let id: string;
+      try { id = decodeURIComponent(window.location.hash.slice(1)); } catch { return; }
+      if (!id.startsWith("assignment-")) return;
+      const card = document.getElementById(id);
+      card?.focus({ preventScroll: true });
+      card?.scrollIntoView({ block: "center" });
+    };
+    focusAssignment();
+    window.addEventListener("hashchange", focusAssignment);
+    return () => window.removeEventListener("hashchange", focusAssignment);
+  }, [loading]);
 
   const renderCard = (assignment: StudentAssignment) => {
     const readOnlyCourse = assignment.course.completedByTeacher === true;
@@ -380,7 +427,9 @@ export default function StudentAssignmentsPage() {
     return (
       <article
         key={assignment.id}
-        className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-200 hover:shadow"
+        id={`assignment-${assignment.id}`}
+        tabIndex={-1}
+        className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-200 hover:shadow target:border-blue-500 target:ring-2 target:ring-blue-200"
       >
         <p className="text-sm font-semibold text-slate-900">
           {assignment.title}
@@ -409,24 +458,43 @@ export default function StudentAssignmentsPage() {
 
         <button
           type="button"
-          disabled={readOnlyCourse}
           onClick={() => setActiveCardId(assignment.id)}
           className="mt-3 inline-flex h-8 min-w-[130px] items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {readOnlyCourse
-            ? "Только просмотр"
+          {readOnlyCourse || isOverdue(assignment.dueAt)
+            ? "Посмотреть"
             : assignment.submission
               ? "Пересдать"
               : "Сдать"}
         </button>
+        {assignment.submission ? (
+          <div className="mt-3 border-t border-slate-200 pt-3 text-sm">
+            <p className="font-semibold text-slate-800">
+              {assignment.submission.grade !== null
+                ? `Оценка: ${assignment.submission.grade} / 100`
+                : "Работа отправлена, ожидает оценки"}
+            </p>
+            {assignment.submission.feedback?.trim() ? (
+              <p className="mt-1 text-xs text-slate-600">Есть комментарий преподавателя — откройте работу.</p>
+            ) : null}
+          </div>
+        ) : null}
       </article>
     );
   };
 
   return (
     <main className="space-y-6">
+      {hasUnsavedAnswers ? (
+        <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Есть неотправленные ответы или вложения. Отправьте работы перед уходом со страницы: черновики хранятся только пока она открыта.
+        </p>
+      ) : null}
+      {loadError ? (
+        <LoadError message={loadError} busy={loading} onRetry={() => void loadRows()} />
+      ) : null}
       {error ? (
-        <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+        <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {error}
         </p>
       ) : null}
@@ -440,14 +508,14 @@ export default function StudentAssignmentsPage() {
             />
           ))}
         </section>
-      ) : (
+      ) : loadError && rows.length === 0 ? null : (
         <>
           {activeAssignment ? (
             <section className="rounded-3xl border border-indigo-200 bg-white p-5 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-semibold text-slate-900">
-                    {activeAssignment.submission
+                    {readOnlyReason ? "Просмотр задания" : activeAssignment.submission
                       ? "Пересдача задания"
                       : "Сдача задания"}
                   </h2>
@@ -461,6 +529,38 @@ export default function StudentAssignmentsPage() {
                 </button>
               </div>
 
+              <p className="mt-3 font-semibold text-slate-900">{activeAssignment.title}</p>
+              {readOnlyReason ? <p className="mt-2 text-sm text-slate-600">{readOnlyReason}</p> : null}
+              {activeAssignment.submission ? (
+                <section aria-label="Результат проверки работы" className="mt-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-800">
+                  <h3 className="font-semibold">
+                    {activeAssignment.submission.grade !== null
+                      ? `Оценка: ${activeAssignment.submission.grade} / 100`
+                      : "Работа отправлена, ожидает оценки"}
+                  </h3>
+                  <p className="text-xs text-slate-600">
+                    Отправлено: {new Date(activeAssignment.submission.submittedAt).toLocaleString("ru-RU")}
+                  </p>
+                  {activeAssignment.submission.feedback?.trim() ? (
+                    <div>
+                      <p className="font-medium">Комментарий преподавателя</p>
+                      <p className="mt-1 whitespace-pre-wrap break-words">{activeAssignment.submission.feedback}</p>
+                    </div>
+                  ) : null}
+                  {activeAssignment.submission.attachments.length ? (
+                    <div>
+                      <p className="font-medium">Отправленные вложения</p>
+                      <ul className="mt-1 list-inside list-disc space-y-1">
+                        {activeAssignment.submission.attachments.map((file, index) => (
+                          <li key={`${index}-${file.name}`} className="break-all">
+                            {file.name} · {Math.ceil(file.size / 1024).toLocaleString("ru-RU")} КБ
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
               <div className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 {shouldRenderAssignmentDescription(
                   activeAssignment.title,
@@ -497,6 +597,8 @@ export default function StudentAssignmentsPage() {
                 ) : null}
 
                 <textarea
+                  aria-label="Ответ на задание"
+                  readOnly={Boolean(readOnlyReason)}
                   ref={(node) => {
                     textareaRefs.current[activeAssignment.id] = node;
                   }}
@@ -508,7 +610,7 @@ export default function StudentAssignmentsPage() {
                     }))
                   }
                   onPaste={(event) => {
-                    void handlePasteImages(activeAssignment.id, event);
+                    if (!readOnlyReason) void handlePasteImages(activeAssignment.id, event);
                   }}
                   placeholder="Ответ: Markdown, LaTeX ($$y = x^2$$), ссылки и фото через Ctrl+V"
                   className="min-h-40 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
@@ -517,7 +619,7 @@ export default function StudentAssignmentsPage() {
                 {(answerDrafts[activeAssignment.id] ?? "").trim() ? (
                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                     <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Preview
+                      Предпросмотр ответа
                     </p>
                     <div className="prose prose-slate max-w-none break-words text-sm leading-6">
                       <ReactMarkdown
@@ -545,27 +647,39 @@ export default function StudentAssignmentsPage() {
                   </div>
                 ) : null}
 
-                <label className="inline-flex w-fit cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                <label className="block text-sm font-medium text-slate-700">
                   Добавить файлы
                   <input
                     type="file"
-                    className="hidden"
+                    className="mt-2 block w-full min-w-0 text-sm file:mr-3 file:min-h-11 file:rounded-lg file:border file:border-slate-300 file:bg-white file:px-3 file:text-slate-700"
                     multiple
-                    onChange={(event) =>
-                      void handleSelectFiles(
-                        activeAssignment.id,
-                        event.target.files,
-                      )
-                    }
+                    disabled={Boolean(readOnlyReason) || busy[activeAssignment.id] || Boolean(fileReads[activeAssignment.id])}
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files ?? []);
+                      event.target.value = "";
+                      void handleSelectFiles(activeAssignment.id, files);
+                    }}
                   />
                 </label>
+                <p className="text-xs text-slate-600">До 8 МБ на файл, до 20 МБ на все вложения. Пустые файлы не принимаются.</p>
+                {fileReads[activeAssignment.id] ? <p role="status" className="text-sm text-slate-600">Подготовка вложений…</p> : null}
 
                 {(attachmentDrafts[activeAssignment.id] ?? []).length ? (
                   <ul className="space-y-1 text-xs text-slate-600">
                     {(attachmentDrafts[activeAssignment.id] ?? []).map(
                       (file, index) => (
-                        <li key={`${activeAssignment.id}-file-${index}`}>
-                          • {file.name}
+                        <li key={`${activeAssignment.id}-file-${index}`} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-1">
+                          <span className="min-w-0 break-all">{file.name} · {Math.ceil(file.size / 1024).toLocaleString("ru-RU")} КБ</span>
+                          <button
+                            type="button"
+                            disabled={Boolean(readOnlyReason) || busy[activeAssignment.id]}
+                            aria-label={`Удалить вложение ${file.name}`}
+                            className="min-h-11 shrink-0 rounded-lg px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                            onClick={() => setAttachmentDrafts((previous) => ({
+                              ...previous,
+                              [activeAssignment.id]: (previous[activeAssignment.id] ?? []).filter((item) => item !== file),
+                            }))}
+                          >Удалить</button>
                         </li>
                       ),
                     )}
@@ -575,18 +689,18 @@ export default function StudentAssignmentsPage() {
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    disabled={busy[activeAssignment.id]}
+                    disabled={Boolean(readOnlyReason) || busy[activeAssignment.id] || Boolean(imageUploads[activeAssignment.id]) || Boolean(fileReads[activeAssignment.id])}
                     onClick={() => void submitAssignment(activeAssignment)}
                     className="h-9 min-w-[120px] rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
                   >
-                    {busy[activeAssignment.id] ? "Отправка..." : "Отправить"}
+                    {busy[activeAssignment.id] ? "Отправка..." : imageUploads[activeAssignment.id] || fileReads[activeAssignment.id] ? "Подготовка файлов..." : "Отправить"}
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveCardId(null)}
                     className="h-9 min-w-[120px] rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                   >
-                    Отмена
+                    Закрыть
                   </button>
                 </div>
               </div>

@@ -1,4 +1,5 @@
-﻿import bcrypt from "bcryptjs";
+import { randomUUID } from "node:crypto";
+import bcrypt from "bcryptjs";
 import { prisma } from "../src/lib/prisma";
 
 function readArg(name: string) {
@@ -33,15 +34,10 @@ async function main() {
     process.exit(1);
   }
 
-  const all = await prisma.user.findMany({ select: { id: true } });
-  const maxId = all.reduce((acc, row) => {
-    const value = Number.parseInt(row.id.replace(/^u/, ""), 10);
-    return Number.isNaN(value) ? acc : Math.max(acc, value);
-  }, 0);
 
   const created = await prisma.user.create({
     data: {
-      id: `u${maxId + 1}`,
+      id: `u_${randomUUID()}`,
       fullName,
       email,
       phone,

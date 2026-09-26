@@ -1,9 +1,14 @@
 "use client";
 
+import { apiJson, apiErrorMessage } from "@/lib/api-client";
+
+import { CourseNavigation } from "@/components/dashboard/course-navigation";
+import { LoadError } from "@/components/ui/load-error";
+
 import { Eye, MessageSquareText } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -21,11 +26,19 @@ type GradeRow = {
 };
 
 export default function TeacherGradesPage() {
+  return <Suspense fallback={<p role="status">Загрузка оценок…</p>}><TeacherGradesContent /></Suspense>;
+}
+
+function TeacherGradesContent() {
   const searchParams = useSearchParams();
+  const selectedCourse = searchParams.get("course") ?? "";
   const targetSubmissionId = searchParams.get("submissionId") ?? "";
 
   const [gradeRows, setGradeRows] = useState<GradeRow[]>([]);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [retry, setRetry] = useState(0);
   const [saveNotice, setSaveNotice] = useState("");
   const [scoreDrafts, setScoreDrafts] = useState<Record<string, string>>({});
   const [savingIds, setSavingIds] = useState<Record<string, boolean>>({});
@@ -39,20 +52,13 @@ export default function TeacherGradesPage() {
   const [commentMessage, setCommentMessage] = useState("");
 
   useEffect(() => {
+    const controller = new AbortController();
     const loadGrades = async () => {
+      setLoading(true);
+      setLoadError("");
       try {
-        const response = await fetch(`${API_URL}/api/teacher/grades`, {
-          credentials: "include",
-        });
-        const data = (await response.json()) as {
-          rows?: GradeRow[];
-          message?: string;
-        };
-
-        if (!response.ok) {
-          setError(data.message ?? "Не удалось загрузить оценки");
-          return;
-        }
+        const data = await apiJson<{ rows?: GradeRow[] }>("/api/teacher/grades", { signal: controller.signal });
+        if (controller.signal.aborted) return;
 
         setGradeRows(data.rows ?? []);
         setScoreDrafts(
@@ -65,13 +71,16 @@ export default function TeacherGradesPage() {
             ]),
           ),
         );
-      } catch {
-        setError("Ошибка сети");
+      } catch (error) {
+        if (!controller.signal.aborted) setLoadError(apiErrorMessage(error));
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
 
     void loadGrades();
-  }, []);
+    return () => controller.abort();
+  }, [retry]);
 
   useEffect(() => {
     if (!targetSubmissionId) {
@@ -93,7 +102,7 @@ export default function TeacherGradesPage() {
   const saveGrade = async (row: GradeRow) => {
     const rawValue = scoreDrafts[row.submissionId] ?? "";
     const score = Number(rawValue);
-    if (!Number.isFinite(score) || score < 0 || score > 100) {
+    if (!rawValue.trim() || !Number.isFinite(score) || score < 0 || score > 100) {
       setError("Оценка должна быть числом от 0 до 100");
       return;
     }
@@ -102,30 +111,13 @@ export default function TeacherGradesPage() {
     setSavingIds((prev) => ({ ...prev, [row.submissionId]: true }));
 
     try {
-      const response = await fetch(
-        `${API_URL}/api/teacher/submissions/${row.submissionId}/grade`,
-        {
-          credentials: "include",
+      const data = await apiJson<{ grade?: { score?: number | string | null; feedback?: string | null } }>(
+        `/api/teacher/submissions/${encodeURIComponent(row.submissionId)}/grade`, {
           method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            score,
-            feedback: row.feedback ?? "",
-          }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ score, feedback: row.feedback ?? "" }),
         },
       );
-
-      const data = (await response.json()) as {
-        message?: string;
-        grade?: { score?: number | string | null; feedback?: string | null };
-      };
-
-      if (!response.ok) {
-        setError(data.message ?? "Не удалось сохранить оценку");
-        return;
-      }
 
       setGradeRows((prev) =>
         prev.map((item) =>
@@ -156,8 +148,8 @@ export default function TeacherGradesPage() {
         setSaveNotice("");
       }, 1700);
       window.dispatchEvent(new Event("teacher-grades-updated"));
-    } catch {
-      setError("Ошибка сети");
+    } catch (error) {
+      setError(apiErrorMessage(error));
     } finally {
       setSavingIds((prev) => ({ ...prev, [row.submissionId]: false }));
     }
@@ -173,24 +165,13 @@ export default function TeacherGradesPage() {
     setCommentSaving(true);
 
     try {
-      const response = await fetch(
-        `${API_URL}/api/teacher/submissions/${commentModalRow.submissionId}/comment`,
-        {
-          credentials: "include",
+      const data = await apiJson<{ message?: string }>(
+        `/api/teacher/submissions/${encodeURIComponent(commentModalRow.submissionId)}/comment`, {
           method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ comment: commentDraft }),
         },
       );
-
-      const data = (await response.json()) as { message?: string };
-
-      if (!response.ok) {
-        setError(data.message ?? "Не удалось сохранить комментарий");
-        return;
-      }
 
       setGradeRows((prev) =>
         prev.map((item) =>
@@ -202,8 +183,8 @@ export default function TeacherGradesPage() {
       setCommentMessage(data.message ?? "Комментарий сохранен");
       setCommentModalRow(null);
       setCommentDraft("");
-    } catch {
-      setError("Ошибка сети");
+    } catch (error) {
+      setError(apiErrorMessage(error));
     } finally {
       setCommentSaving(false);
     }
@@ -221,6 +202,7 @@ export default function TeacherGradesPage() {
     >();
 
     for (const row of gradeRows) {
+      if (selectedCourse && row.courseId !== selectedCourse) continue;
       const existing = map.get(row.studentId);
       if (existing) {
         existing.rows.push(row);
@@ -239,7 +221,7 @@ export default function TeacherGradesPage() {
         sensitivity: "base",
       }),
     );
-  }, [gradeRows]);
+  }, [gradeRows, selectedCourse]);
 
   const isRowGraded = (row: GradeRow) =>
     row.score !== null && typeof row.score !== "undefined";
@@ -261,6 +243,7 @@ export default function TeacherGradesPage() {
     if (!targetRow) {
       return;
     }
+    setGradeFilter(isRowGraded(targetRow) ? "graded" : "ungraded");
   }, [targetSubmissionId, gradeRows]);
 
   useEffect(
@@ -274,6 +257,7 @@ export default function TeacherGradesPage() {
 
   return (
     <main className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      <CourseNavigation courseId={selectedCourse} active="grades" />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold sm:text-2xl">Оценки</h1>
         {/* <div className="flex w-full flex-wrap gap-2 sm:w-auto">
@@ -299,7 +283,7 @@ export default function TeacherGradesPage() {
           >
             Не выставленные (
             {
-              gradeRows.filter(
+              gradeRows.filter((row) => !selectedCourse || row.courseId === selectedCourse).filter(
                 (row) => row.score === null || typeof row.score === "undefined",
               ).length
             }
@@ -316,7 +300,7 @@ export default function TeacherGradesPage() {
           >
             Выставленные (
             {
-              gradeRows.filter(
+              gradeRows.filter((row) => !selectedCourse || row.courseId === selectedCourse).filter(
                 (row) => row.score !== null && typeof row.score !== "undefined",
               ).length
             }
@@ -333,13 +317,14 @@ export default function TeacherGradesPage() {
         </div>
       ) : null}
 
-      {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+      {error ? <p role="alert" className="mt-3 text-sm text-rose-600">{error}</p> : null}
+      {loadError ? <LoadError message={loadError} busy={loading} onRetry={() => setRetry((value) => value + 1)} /> : null}
 
       <div className="mt-4 space-y-4">
-        {groupedByStudent.length === 0 ? (
-          <p className="text-sm text-slate-600">Сдач пока нет.</p>
+        {loading ? <p role="status">Загрузка оценок…</p> : loadError ? null : groupedByStudent.every((student) => filterRowsByGrade(student.rows).length === 0) ? (
+          <p className="text-sm text-slate-600">{gradeFilter === "graded" ? "Оценённых работ пока нет." : "Работ, ожидающих оценки, нет."}</p>
         ) : (
-          groupedByStudent.map((student) => (
+          groupedByStudent.filter((student) => filterRowsByGrade(student.rows).length > 0).map((student) => (
             <article
               key={student.studentId}
               className="rounded-xl border border-slate-200 bg-white p-4"
@@ -361,7 +346,7 @@ export default function TeacherGradesPage() {
                       </p>
                       <div className="mt-2 flex items-center gap-1.5">
                         <Link
-                          href={`/dashboard/teacher/assignments?submissionId=${row.submissionId}`}
+                          href={`/dashboard/teacher/assignments?course=${encodeURIComponent(row.courseId)}&submissionId=${encodeURIComponent(row.submissionId)}`}
                           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
                           aria-label="Просмотреть"
                           title="Просмотреть"
@@ -422,7 +407,7 @@ export default function TeacherGradesPage() {
                         </p>
                         <div className="ml-auto flex items-center gap-3">
                           <Link
-                            href={`/dashboard/teacher/assignments?submissionId=${row.submissionId}`}
+                            href={`/dashboard/teacher/assignments?course=${encodeURIComponent(row.courseId)}&submissionId=${encodeURIComponent(row.submissionId)}`}
                             className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
                           >
                             Просмотреть

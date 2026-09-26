@@ -1,4 +1,6 @@
-﻿"use client";
+"use client";
+
+import { apiFetch } from "@/lib/api-client";
 
 import { type FormEvent, useState } from "react";
 
@@ -20,7 +22,7 @@ export default function AdminNewCoursePage() {
     setMessage("");
 
     try {
-      const response = await fetch(`${API_URL}/api/admin/courses`, {
+      const response = await apiFetch(`${API_URL}/api/admin/courses`, {
           credentials: "include",
         method: "POST",
         headers: {

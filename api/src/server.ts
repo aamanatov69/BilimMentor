@@ -2,7 +2,7 @@ import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 import { errorHandler } from "./middleware/errorHandler";
-import { lmsRoutes } from "./routes/lmsRoutes";
+import { lmsRoutes } from "./routes";
 
 export const app = express();
 const PORT = Number(process.env.PORT ?? 4000);
@@ -69,7 +69,8 @@ app.use(
     },
   }),
 );
-app.use(express.json({ limit: "25mb" }));
+// 20 MiB of attachments expands to about 27 MiB in Base64, plus JSON and answer text.
+app.use(express.json({ limit: "30mb" }));
 app.use(lmsRoutes);
 app.use(errorHandler);
 

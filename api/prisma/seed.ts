@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 ﻿import { UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { prisma } from "../src/lib/prisma";
@@ -88,12 +89,7 @@ async function main() {
     });
 
     if (!existing) {
-      const allUserIds = await prisma.user.findMany({ select: { id: true } });
-      const maxId = allUserIds.reduce((acc, row) => {
-        const value = Number.parseInt(row.id.replace(/^u/, ""), 10);
-        return Number.isNaN(value) ? acc : Math.max(acc, value);
-      }, 0);
-      const nextId = `u${maxId + 1}`;
+      const nextId = `u_${randomUUID()}`;
 
       await prisma.user.create({
         data: {

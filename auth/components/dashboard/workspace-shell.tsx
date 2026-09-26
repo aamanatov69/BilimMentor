@@ -1,21 +1,16 @@
 "use client";
 
-import {
-  formatNotificationDate,
-  localizeNotificationBody,
-  localizeNotificationTitle,
-  localizeNotificationType,
-} from "@/lib/notifications";
-import {
-  Bell,
-  ChevronDown,
-  LogOut,
-  Search,
-  type LucideIcon,
-} from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
+
+import { Bell, ChevronDown, LogOut, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { MobileBottomNav } from "./mobile-bottom-nav";
+import { NotificationsPanelContent } from "./notifications-panel-content";
+import { SearchDropdown } from "./search-dropdown";
+import { SessionRecovery } from "./session-recovery";
+import { apiJson } from "@/lib/api-client";
 
 type DashboardRole = "student" | "teacher" | "admin";
 
@@ -98,9 +93,11 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
   const router = useRouter();
 
   const [profileName, setProfileName] = useState(props.defaultName);
+  const [profileId, setProfileId] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
+  const [searchLoaded, setSearchLoaded] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResultItem[]>([]);
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -132,13 +129,8 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
 
   const loadProfile = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/me`, {
-        credentials: "include",
-      });
-      if (!response.ok) {
-        return;
-      }
-      const data = (await response.json()) as MeResponse;
+      const data = await apiJson<MeResponse>("/api/me");
+      if (data.user?.id) setProfileId(data.user.id);
       const fullName = data.user?.fullName?.trim();
       if (fullName) {
         setProfileName(fullName);
@@ -151,8 +143,8 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
   const loadNotifications = async () => {
     try {
       const [listResponse, countResponse] = await Promise.all([
-        fetch(`${API_URL}/api/notifications`, { credentials: "include" }),
-        fetch(`${API_URL}/api/notifications/unread-count`, {
+        apiFetch(`${API_URL}/api/notifications`, { credentials: "include" }),
+        apiFetch(`${API_URL}/api/notifications/unread-count`, {
           credentials: "include",
         }),
       ]);
@@ -178,7 +170,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
   const loadRoleAlerts = async () => {
     try {
       if (props.role === "student") {
-        const response = await fetch(`${API_URL}/api/student/assignments`, {
+        const response = await apiFetch(`${API_URL}/api/student/assignments`, {
           credentials: "include",
         });
         if (!response.ok) {
@@ -195,7 +187,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
       }
 
       if (props.role === "teacher") {
-        const response = await fetch(`${API_URL}/api/teacher/grades`, {
+        const response = await apiFetch(`${API_URL}/api/teacher/grades`, {
           credentials: "include",
         });
         if (!response.ok) {
@@ -211,7 +203,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
         return;
       }
 
-      const response = await fetch(`${API_URL}/api/admin/reports`, {
+      const response = await apiFetch(`${API_URL}/api/admin/reports`, {
         credentials: "include",
       });
       if (!response.ok) {
@@ -227,14 +219,15 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
   };
 
   const loadSearchIndex = async () => {
+    setSearchLoaded(true);
     setSearchLoading(true);
     try {
       if (props.role === "student") {
         const [discoverResponse, enrolledResponse] = await Promise.all([
-          fetch(`${API_URL}/api/student/courses/discover`, {
+          apiFetch(`${API_URL}/api/student/courses/discover`, {
             credentials: "include",
           }),
-          fetch(`${API_URL}/api/student/courses`, { credentials: "include" }),
+          apiFetch(`${API_URL}/api/student/courses`, { credentials: "include" }),
         ]);
 
         const combined: SearchResultItem[] = [];
@@ -248,7 +241,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
               id: `discover-${course.id}`,
               label: course.title,
               description: course.description || "Курс из каталога",
-              href: `/dashboard/student/courses`,
+              href: `/dashboard/student/courses?tab=all&course=${encodeURIComponent(course.id)}`,
               kind: "course",
             });
           }
@@ -287,7 +280,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
                 id: `lesson-${course.id}-${lessonId}`,
                 label: asString(lesson.title) || "Урок",
                 description: `Урок курса ${course.title}`,
-                href: `/dashboard/student/courses/${course.id}`,
+                href: `/dashboard/student/courses/${course.id}?lesson=${encodeURIComponent(lessonId)}`,
                 kind: "lesson",
               });
             }
@@ -299,7 +292,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
       }
 
       if (props.role === "teacher") {
-        const response = await fetch(`${API_URL}/api/teacher/courses`, {
+        const response = await apiFetch(`${API_URL}/api/teacher/courses`, {
           credentials: "include",
         });
         if (!response.ok) {
@@ -323,7 +316,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
             id: `course-${course.id}`,
             label: course.title,
             description: course.description || "Курс преподавателя",
-            href: "/dashboard/teacher/courses",
+            href: `/dashboard/teacher/courses?course=${encodeURIComponent(course.id)}`,
             kind: "course",
           });
 
@@ -339,7 +332,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
               id: `lesson-${course.id}-${lessonId}`,
               label: asString(lesson.title) || "Урок",
               description: `Урок курса ${course.title}`,
-              href: `/dashboard/teacher/courses?course=${course.id}`,
+              href: `/dashboard/teacher/courses?course=${encodeURIComponent(course.id)}#lesson-${encodeURIComponent(lessonId)}`,
               kind: "lesson",
             });
           }
@@ -350,8 +343,8 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
       }
 
       const [coursesResponse, usersResponse] = await Promise.all([
-        fetch(`${API_URL}/api/courses`, { credentials: "include" }),
-        fetch(`${API_URL}/api/admin/users`, { credentials: "include" }),
+        apiFetch(`${API_URL}/api/courses`, { credentials: "include" }),
+        apiFetch(`${API_URL}/api/admin/users`, { credentials: "include" }),
       ]);
 
       const items: SearchResultItem[] = [];
@@ -371,7 +364,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
             id: `course-${course.id}`,
             label: course.title,
             description: course.description || "Курс",
-            href: "/dashboard/admin/courses",
+            href: `/dashboard/admin/courses/${encodeURIComponent(course.id)}/edit`,
             kind: "course",
           });
 
@@ -386,7 +379,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
               id: `lesson-${course.id}-${lessonId}`,
               label: asString(lesson.title) || "Урок",
               description: `Урок курса ${course.title}`,
-              href: "/dashboard/admin/courses",
+              href: `/dashboard/admin/courses/${encodeURIComponent(course.id)}/edit#lesson-${encodeURIComponent(lessonId)}`,
               kind: "lesson",
             });
           }
@@ -407,7 +400,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
             id: `user-${user.id}`,
             label: user.fullName,
             description: `${user.role} · ${user.email}`,
-            href: "/dashboard/admin/users",
+            href: `/dashboard/admin/users#user-${encodeURIComponent(user.id)}`,
             kind: "user",
           });
         }
@@ -436,11 +429,15 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
   }, [props.role]);
 
   useEffect(() => {
-    if (!searchOpen || searchResults.length > 0 || searchLoading) {
+    if (!searchOpen) {
+      setSearchLoaded(false);
+      return;
+    }
+    if (searchLoaded || searchLoading) {
       return;
     }
     void loadSearchIndex();
-  }, [searchOpen, searchResults.length, searchLoading]);
+  }, [searchOpen, searchLoaded, searchLoading]);
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
@@ -492,8 +489,6 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
     return href === "/dashboard/admin/requests";
   };
 
-  const hasFixedMobileButtons =
-    props.role === "teacher" || props.role === "student";
 
   const filteredSearch = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -553,7 +548,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
   }, [pathname, props.navItems, props.role]);
 
   const handleLogout = async () => {
-    await fetch(`${API_URL}/api/auth/logout`, {
+    await apiFetch(`${API_URL}/api/auth/logout`, {
       method: "POST",
       credentials: "include",
     });
@@ -561,7 +556,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
   };
 
   const markAsRead = async (notificationId: string) => {
-    await fetch(`${API_URL}/api/notifications/${notificationId}/read`, {
+    await apiFetch(`${API_URL}/api/notifications/${notificationId}/read`, {
       method: "PATCH",
       credentials: "include",
     });
@@ -569,7 +564,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
   };
 
   const markAllRead = async () => {
-    await fetch(`${API_URL}/api/notifications/read/all`, {
+    await apiFetch(`${API_URL}/api/notifications/read/all`, {
       method: "PATCH",
       credentials: "include",
     });
@@ -590,76 +585,22 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
           </div>
 
           <div className="ml-auto flex items-center gap-2">
-            <div ref={searchContainerRef} className="relative hidden md:block">
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchOpen((current) => !current);
-                  setNotificationsOpen(false);
-                }}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white/90 px-3 text-sm text-slate-600 shadow-sm hover:bg-white"
-              >
-                <Search className="h-4 w-4" />
-                Поиск
-                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">
-                  /
-                </span>
-              </button>
-
-              {searchOpen ? (
-                <div className="absolute right-0 top-12 w-[520px] rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur">
-                  <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3">
-                    <Search className="h-4 w-4 text-slate-500" />
-                    <input
-                      value={searchQuery}
-                      onChange={(event) => setSearchQuery(event.target.value)}
-                      placeholder="Курсы, уроки и пользователи"
-                      className="h-10 w-full border-0 bg-transparent text-sm outline-none placeholder:text-slate-400"
-                    />
-                  </div>
-
-                  <div className="mt-3 max-h-[320px] space-y-1 overflow-y-auto">
-                    {searchLoading ? (
-                      <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                        Индексация данных...
-                      </p>
-                    ) : filteredSearch.length === 0 ? (
-                      <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                        Ничего не найдено
-                      </p>
-                    ) : (
-                      filteredSearch.map((item) => (
-                        <Link
-                          key={item.id}
-                          href={item.href}
-                          className="flex items-center justify-between rounded-xl border border-transparent px-3 py-2 hover:border-slate-200 hover:bg-slate-50"
-                          onClick={() => {
-                            setSearchOpen(false);
-                            setSearchQuery("");
-                          }}
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-slate-900">
-                              {item.label}
-                            </p>
-                            <p className="truncate text-xs text-slate-500">
-                              {item.description}
-                            </p>
-                          </div>
-                          <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">
-                            {item.kind === "user"
-                              ? "Пользователь"
-                              : item.kind === "lesson"
-                                ? "Урок"
-                                : "Курс"}
-                          </span>
-                        </Link>
-                      ))
-                    )}
-                  </div>
-                </div>
-              ) : null}
-            </div>
+            <SearchDropdown
+              containerRef={searchContainerRef}
+              searchOpen={searchOpen}
+              onToggleOpen={() => {
+                setSearchOpen((current) => !current);
+                setNotificationsOpen(false);
+              }}
+              searchQuery={searchQuery}
+              onSearchQueryChange={setSearchQuery}
+              searchLoading={searchLoading}
+              filteredSearch={filteredSearch}
+              onSelectResult={() => {
+                setSearchOpen(false);
+                setSearchQuery("");
+              }}
+            />
 
             <div ref={notificationsContainerRef} className="relative">
               <button
@@ -682,147 +623,23 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
               {notificationsOpen ? (
                 <>
                   <div className="fixed left-2 right-2 top-[4.25rem] z-50 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur md:hidden">
-                    <div className="mb-2 flex items-center justify-between">
-                      <p className="text-sm font-semibold text-slate-900">
-                        Уведомления
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => void markAllRead()}
-                        className="text-xs font-semibold text-sky-700 hover:text-sky-900"
-                      >
-                        Отметить все
-                      </button>
-                    </div>
-
-                    <div className="max-h-[calc(100dvh-7.5rem)] space-y-3 overflow-y-auto pr-1">
-                      {(["assignments", "courses", "system"] as const).map(
-                        (groupKey) => {
-                          const entries = notificationGroups[groupKey];
-                          if (!entries.length) {
-                            return null;
-                          }
-
-                          const groupTitle =
-                            groupKey === "assignments"
-                              ? "Задания"
-                              : groupKey === "courses"
-                                ? "Курсы"
-                                : "Система";
-
-                          return (
-                            <section key={groupKey}>
-                              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                {groupTitle}
-                              </p>
-                              <div className="space-y-1">
-                                {entries.slice(0, 6).map((item) => (
-                                  <button
-                                    key={item.id}
-                                    type="button"
-                                    onClick={() => void markAsRead(item.id)}
-                                    className="w-full rounded-xl border border-slate-200 p-2 text-left hover:bg-slate-50"
-                                  >
-                                    <p className="text-xs font-semibold text-slate-900">
-                                      {localizeNotificationTitle(item.title)}
-                                    </p>
-                                    <p className="mt-0.5 line-clamp-2 text-xs text-slate-600">
-                                      {localizeNotificationBody(item.body)}
-                                    </p>
-                                    <div className="mt-1 flex items-center justify-between">
-                                      <span className="text-[11px] text-slate-500">
-                                        {localizeNotificationType(item.type)}
-                                      </span>
-                                      <span className="text-[11px] text-slate-400">
-                                        {formatNotificationDate(item.createdAt)}
-                                      </span>
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            </section>
-                          );
-                        },
-                      )}
-
-                      {!notifications.length ? (
-                        <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                          Уведомлений пока нет
-                        </p>
-                      ) : null}
-                    </div>
+                    <NotificationsPanelContent
+                      notifications={notifications}
+                      notificationGroups={notificationGroups}
+                      onMarkAsRead={(id) => void markAsRead(id)}
+                      onMarkAllRead={() => void markAllRead()}
+                      listClassName="max-h-[calc(100dvh-7.5rem)] space-y-3 overflow-y-auto pr-1"
+                    />
                   </div>
 
                   <div className="absolute right-0 top-12 hidden w-[360px] rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur md:block">
-                    <div className="mb-2 flex items-center justify-between">
-                      <p className="text-sm font-semibold text-slate-900">
-                        Уведомления
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => void markAllRead()}
-                        className="text-xs font-semibold text-sky-700 hover:text-sky-900"
-                      >
-                        Отметить все
-                      </button>
-                    </div>
-
-                    <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
-                      {(["assignments", "courses", "system"] as const).map(
-                        (groupKey) => {
-                          const entries = notificationGroups[groupKey];
-                          if (!entries.length) {
-                            return null;
-                          }
-
-                          const groupTitle =
-                            groupKey === "assignments"
-                              ? "Задания"
-                              : groupKey === "courses"
-                                ? "Курсы"
-                                : "Система";
-
-                          return (
-                            <section key={groupKey}>
-                              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                {groupTitle}
-                              </p>
-                              <div className="space-y-1">
-                                {entries.slice(0, 6).map((item) => (
-                                  <button
-                                    key={item.id}
-                                    type="button"
-                                    onClick={() => void markAsRead(item.id)}
-                                    className="w-full rounded-xl border border-slate-200 p-2 text-left hover:bg-slate-50"
-                                  >
-                                    <p className="text-xs font-semibold text-slate-900">
-                                      {localizeNotificationTitle(item.title)}
-                                    </p>
-                                    <p className="mt-0.5 line-clamp-2 text-xs text-slate-600">
-                                      {localizeNotificationBody(item.body)}
-                                    </p>
-                                    <div className="mt-1 flex items-center justify-between">
-                                      <span className="text-[11px] text-slate-500">
-                                        {localizeNotificationType(item.type)}
-                                      </span>
-                                      <span className="text-[11px] text-slate-400">
-                                        {formatNotificationDate(item.createdAt)}
-                                      </span>
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            </section>
-                          );
-                        },
-                      )}
-
-                      {!notifications.length ? (
-                        <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                          Уведомлений пока нет
-                        </p>
-                      ) : null}
-                    </div>
+                    <NotificationsPanelContent
+                      notifications={notifications}
+                      notificationGroups={notificationGroups}
+                      onMarkAsRead={(id) => void markAsRead(id)}
+                      onMarkAllRead={() => void markAllRead()}
+                      listClassName="max-h-[360px] space-y-3 overflow-y-auto pr-1"
+                    />
                   </div>
                 </>
               ) : null}
@@ -861,6 +678,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
                 <Link
                   key={item.href}
                   href={item.href}
+                  aria-current={active ? "page" : undefined}
                   className={
                     active
                       ? "flex items-center gap-3 rounded-xl border border-slate-900 bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white"
@@ -876,7 +694,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
         </aside>
 
         <main className="min-h-[calc(100vh-4rem)] min-w-0 flex-1 p-4 pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:p-5 md:pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:p-6 lg:pb-6">
-          <nav className="mb-4 flex items-center gap-1 overflow-x-auto pb-1 text-xs text-slate-500">
+          <nav aria-label="Путь страницы" className="mb-4 flex items-center gap-1 overflow-x-auto pb-1 text-xs text-slate-500">
             {breadcrumbs.map((item, index) => (
               <div
                 key={`${item.href}-${index}`}
@@ -884,7 +702,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
               >
                 {index > 0 ? <span>/</span> : null}
                 {item.isCurrent ? (
-                  <span className="font-semibold text-slate-700">
+                  <span aria-current="page" className="font-semibold text-slate-700">
                     {item.label}
                   </span>
                 ) : (
@@ -898,75 +716,17 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
               </div>
             ))}
           </nav>
+          <SessionRecovery userId={profileId} />
           {props.children}
         </main>
       </div>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white/95 pb-[max(env(safe-area-inset-bottom),0.25rem)] backdrop-blur lg:hidden">
-        <div
-          className={
-            hasFixedMobileButtons
-              ? "mx-auto grid w-full max-w-[1440px] items-stretch gap-1 px-1 pt-1"
-              : "mx-auto flex max-w-[1440px] items-stretch gap-1 overflow-x-auto px-1 pt-1 [scrollbar-width:none]"
-          }
-          style={
-            hasFixedMobileButtons
-              ? {
-                  gridTemplateColumns: `repeat(${props.navItems.length}, minmax(0, 1fr))`,
-                }
-              : undefined
-          }
-        >
-          {props.navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = isActivePath(item.href, item.exact);
-            const showAlertDot = shouldShowAlertDot(item.href);
-            const showUnreadBadge =
-              item.href.endsWith("/notifications") && unreadCount > 0;
-
-            return (
-              <Link
-                key={`mobile-${item.href}`}
-                href={item.href}
-                className={
-                  hasFixedMobileButtons
-                    ? "flex min-h-[56px] min-w-0 w-full flex-col items-center justify-center gap-1 rounded-lg border-0 px-1 py-2 text-center"
-                    : "flex min-h-[56px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-1 rounded-lg border-0 px-1 py-2 text-center"
-                }
-              >
-                <div
-                  className={`relative inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
-                    isActive ? "bg-slate-900" : "bg-transparent"
-                  }`}
-                >
-                  <Icon
-                    className={`h-4 w-4 transition-colors ${
-                      isActive ? "text-white" : "text-slate-600"
-                    }`}
-                  />
-                  {showAlertDot ? (
-                    <span className="absolute -right-1.5 -top-1.5 h-2 w-2 rounded-full bg-rose-500" />
-                  ) : null}
-                  {showUnreadBadge ? (
-                    <span className="absolute -right-2 -top-2 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
-                      {unreadCount > 99 ? "99+" : unreadCount}
-                    </span>
-                  ) : null}
-                </div>
-                <span
-                  className={`text-[9px] font-semibold leading-3 transition-colors ${
-                    isActive ? "text-slate-900" : "text-slate-600"
-                  }`}
-                >
-                  <span className="block max-w-full truncate">
-                    {item.label}
-                  </span>
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+      <MobileBottomNav
+        navItems={props.navItems}
+        isActivePath={isActivePath}
+        shouldShowAlertDot={shouldShowAlertDot}
+        unreadCount={unreadCount}
+      />
 
       <div className="h-[calc(6rem+env(safe-area-inset-bottom))] lg:hidden" />
     </div>

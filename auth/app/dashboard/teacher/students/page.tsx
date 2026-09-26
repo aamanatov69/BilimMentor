@@ -1,9 +1,18 @@
 "use client";
 
-import { CheckCircle2, XCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { PageHeader } from "@/components/ui/page-header";
+import { SearchFilter, SelectFilter } from "@/components/ui/list-filters";
+import { LoadError } from "@/components/ui/load-error";
+import { EmptyState } from "@/components/ui/empty-state";
+import { apiJson, apiErrorMessage } from "@/lib/api-client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { CourseNavigation } from "@/components/dashboard/course-navigation";
+
+import { useSearchParams } from "next/navigation";
+import { CheckCircle2, XCircle } from "lucide-react";
+import { Suspense, useEffect, useRef, useState } from "react";
+
+
 
 type TeacherCourseItem = {
   id: string;
@@ -32,6 +41,7 @@ type CourseStudentCard = {
   courseId: string;
   requestId?: string;
   requestCourseTitle?: string;
+  courseTitle: string;
   status: "approved" | "pending";
 };
 
@@ -44,61 +54,64 @@ type AccessRequest = {
 };
 
 export default function TeacherStudentsPage() {
+  return <Suspense fallback={<p role="status">Загрузка…</p>}><TeacherStudentsContent /></Suspense>;
+}
+
+function TeacherStudentsContent() {
+  const searchParams = useSearchParams();
+  const selectedCourse = searchParams.get("course") ?? "";
+  const search = searchParams.get("q") ?? "";
+  const requestedStatus = searchParams.get("status");
+  const statusFilter = requestedStatus === "pending" || requestedStatus === "approved"
+    ? requestedStatus
+    : "all";
+
+  const updateFilters = (updates: Record<string, string>, replace = false) => {
+    const url = new URL(window.location.href);
+    for (const [key, value] of Object.entries(updates)) {
+      if (value) url.searchParams.set(key, value);
+      else url.searchParams.delete(key);
+    }
+    const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+    if (nextUrl === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
+    if (replace) window.history.replaceState(null, "", nextUrl);
+    else window.history.pushState(null, "", nextUrl);
+  };
   const [students, setStudents] = useState<CourseStudentCard[]>([]);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
   const [busyRequestId, setBusyRequestId] = useState("");
+  const activeLoad = useRef<AbortController | null>(null);
+  const mounted = useRef(false);
   const [mobileDataOpenById, setMobileDataOpenById] = useState<
     Record<string, boolean>
   >({});
 
   const loadStudents = async () => {
-    setError("");
-
-    if (!API_URL) {
-      setError("Не задан NEXT_PUBLIC_API_URL");
-      setStudents([]);
-      return;
-    }
-
+    if (!mounted.current) return;
+    activeLoad.current?.abort();
+    const controller = new AbortController();
+    activeLoad.current = controller;
+    const options = { signal: controller.signal };
+    setLoadError("");
+    setIsLoading(true);
     try {
-      const [coursesResponse, requestsResponse] = await Promise.all([
-        fetch(`${API_URL}/api/teacher/courses`, { credentials: "include" }),
-        fetch(`${API_URL}/api/teacher/course-access-requests?status=pending`, {
-          credentials: "include",
-        }),
+      const [coursesPayload, requestPayload] = await Promise.all([
+        apiJson<{ courses?: TeacherCourseItem[] }>("/api/teacher/courses", options),
+        apiJson<{ requests?: AccessRequest[] }>("/api/teacher/course-access-requests?status=pending", options),
       ]);
-
-      if (!coursesResponse.ok) {
-        setError("Не удалось загрузить список курсов");
-        setStudents([]);
-        return;
-      }
-
-      const coursesPayload = (await coursesResponse.json()) as {
-        courses?: TeacherCourseItem[];
-      };
       const courses = coursesPayload.courses ?? [];
-
-      const requestPayload = requestsResponse.ok
-        ? ((await requestsResponse.json()) as { requests?: AccessRequest[] })
-        : { requests: [] as AccessRequest[] };
       const pendingRequests = (requestPayload.requests ?? []).filter(
         (request) => request.status === "pending",
       );
 
       const detailsResponses = await Promise.all(
         courses.map(async (course) => {
-          const detailsResponse = await fetch(
-            `${API_URL}/api/teacher/courses/${course.id}/details`,
-            { credentials: "include" },
+          const detailsPayload = await apiJson<TeacherCourseDetails>(
+            `/api/teacher/courses/${encodeURIComponent(course.id)}/details`,
+            options,
           );
-
-          if (!detailsResponse.ok) {
-            return null;
-          }
-
-          const detailsPayload =
-            (await detailsResponse.json()) as TeacherCourseDetails;
           return {
             course,
             students: detailsPayload.students ?? [],
@@ -106,19 +119,20 @@ export default function TeacherStudentsPage() {
         }),
       );
 
-      const mapByStudentId = new Map<string, CourseStudentCard>();
+      const mapByEnrollment = new Map<string, CourseStudentCard>();
 
       detailsResponses.forEach((entry) => {
         if (!entry) return;
 
         (entry.students ?? []).forEach((student) => {
-          mapByStudentId.set(student.id, {
+          mapByEnrollment.set(`${entry.course.id}:${student.id}`, {
             id: `${entry.course.id}-${student.id}`,
             studentId: student.id,
             fullName: student.fullName,
             email: student.email,
             phone: student.phone ?? "",
             courseId: entry.course.id,
+            courseTitle: entry.course.title,
             status: "approved",
           });
         });
@@ -133,28 +147,36 @@ export default function TeacherStudentsPage() {
           return;
         }
 
-        const current = mapByStudentId.get(request.student.id);
-        mapByStudentId.set(request.student.id, {
+        const enrollmentKey = `${request.courseId}:${request.student.id}`;
+        const current = mapByEnrollment.get(enrollmentKey);
+        if (current?.status === "approved") return;
+        mapByEnrollment.set(enrollmentKey, {
           id: current?.id ?? `pending-${request.id}`,
           studentId: request.student.id,
           fullName: request.student.fullName,
           email: request.student.email,
           phone: current?.phone ?? "",
           courseId: request.courseId,
+          courseTitle: request.course?.title ?? courses.find((course) => course.id === request.courseId)?.title ?? "Курс",
           requestId: request.id,
           requestCourseTitle: request.course?.title,
           status: "pending",
         });
       });
 
-      const sortedStudents = Array.from(mapByStudentId.values()).sort((a, b) =>
+      const sortedStudents = Array.from(mapByEnrollment.values()).sort((a, b) =>
         a.fullName.localeCompare(b.fullName, "ru-RU", { sensitivity: "base" }),
       );
 
-      setStudents(sortedStudents);
-    } catch {
-      setError("Ошибка сети при загрузке студентов");
-      setStudents([]);
+      if (!controller.signal.aborted) setStudents(sortedStudents);
+    } catch (error) {
+      if (!controller.signal.aborted) setLoadError(apiErrorMessage(error));
+    } finally {
+      if (activeLoad.current === controller) {
+        if (mounted.current) setIsLoading(false);
+        activeLoad.current = null;
+      }
+      controller.abort();
     }
   };
 
@@ -162,31 +184,15 @@ export default function TeacherStudentsPage() {
     requestId: string,
     status: "approved" | "rejected",
   ) => {
-    if (!API_URL) {
-      setError("Не задан NEXT_PUBLIC_API_URL");
-      return;
-    }
-
     setBusyRequestId(requestId);
     setError("");
     try {
-      const response = await fetch(
-        `${API_URL}/api/teacher/course-access-requests/${requestId}`,
-        {
-          credentials: "include",
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ status }),
-        },
-      );
-
-      const data = (await response.json()) as { message?: string };
-      if (!response.ok) {
-        setError(data.message ?? "Не удалось обработать заявку");
-        return;
-      }
+      await apiJson(`/api/teacher/course-access-requests/${encodeURIComponent(requestId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!mounted.current) return;
 
       // Оптимистично обновляем статус, чтобы студент не исчезал из списка
       if (status === "approved") {
@@ -203,37 +209,78 @@ export default function TeacherStudentsPage() {
       }
 
       await loadStudents();
-    } catch {
-      setError("Ошибка сети при обработке заявки");
+    } catch (error) {
+      if (mounted.current) setError(apiErrorMessage(error));
     } finally {
-      setBusyRequestId("");
+      if (mounted.current) setBusyRequestId("");
     }
   };
 
   useEffect(() => {
+    mounted.current = true;
     void loadStudents();
+    return () => {
+      mounted.current = false;
+      activeLoad.current?.abort();
+    };
   }, []);
+
+  const courseStudents = students.filter((student) => !selectedCourse || student.courseId === selectedCourse);
+  const query = search.trim().toLocaleLowerCase("ru-RU");
+  const hasFilters = Boolean(query) || statusFilter !== "all";
+  const visibleStudents = courseStudents.filter((student) =>
+    (statusFilter === "all" || student.status === statusFilter) &&
+    (!query || [student.fullName, student.email, student.phone, student.courseTitle]
+      .some((value) => value.toLocaleLowerCase("ru-RU").includes(query))),
+  );
+  const resetFilters = () => {
+    updateFilters({ q: "", status: "" });
+  };
 
   return (
     <main className="space-y-6">
+      <CourseNavigation courseId={selectedCourse} active="students" />
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-bold text-slate-900">Студенты</h1>
+          <PageHeader title="Студенты" />
         </div>
-        {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+        <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+          <SearchFilter label="Поиск студентов" value={search} onChange={(value) => updateFilters({ q: value }, true)} placeholder="Имя, почта, телефон или курс" />
+          <SelectFilter label="Доступ к курсу" value={statusFilter} onChange={(value) => updateFilters({ status: value === "all" ? "" : value })} options={[
+            { value: "all", label: "Все записи" }, { value: "pending", label: "На рассмотрении" }, { value: "approved", label: "Доступ открыт" },
+          ]} />
+        </div>
+        {hasFilters ? (
+          <button type="button" onClick={resetFilters} className="mt-2 min-h-11 rounded-lg px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">
+            Сбросить поиск и статус
+          </button>
+        ) : null}
+        {error ? <p role="alert" className="mt-3 text-sm text-rose-600">{error}</p> : null}
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="mb-4 text-lg font-bold text-slate-900">
-          Все студенты ({students.length})
+          Записи на курсы {isLoading || loadError ? "" : `(${visibleStudents.length} из ${courseStudents.length})`}
         </h2>
 
-        {students.length === 0 ? (
-          <p className="text-sm text-slate-600">Студентов пока нет.</p>
+        {isLoading ? (
+          <p role="status" className="text-sm text-slate-600">Загрузка студентов и заявок…</p>
+        ) : loadError ? (
+          <LoadError message={loadError} onRetry={() => void loadStudents()} />
+        ) : visibleStudents.length === 0 ? (
+          <EmptyState
+            title={hasFilters ? "Ничего не найдено" : "Записей на курсы пока нет"}
+            description={hasFilters ? "Измените поисковый запрос или статус доступа." : "Здесь появятся студенты и заявки на доступ к курсам."}
+            action={hasFilters ? (
+              <button type="button" onClick={resetFilters} className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700">
+                Сбросить поиск и статус
+              </button>
+            ) : undefined}
+          />
         ) : (
           <>
             <div className="space-y-3 md:hidden">
-              {students.map((student) => (
+              {visibleStudents.map((student) => (
                 <article
                   key={`mobile-${student.id}`}
                   className="rounded-xl border border-slate-200 bg-slate-50/60 p-4"
@@ -241,6 +288,7 @@ export default function TeacherStudentsPage() {
                   <div className="flex items-start justify-between gap-3">
                     <p className="break-words text-sm font-semibold text-slate-900">
                       {student.fullName}
+                      <span className="block text-xs font-normal text-slate-600">{student.courseTitle}</span>
                     </p>
                     <div className="flex shrink-0 items-center gap-2">
                       {student.status === "pending" ? (
@@ -250,6 +298,8 @@ export default function TeacherStudentsPage() {
                       ) : null}
                       <button
                         type="button"
+                        aria-expanded={Boolean(mobileDataOpenById[student.id])}
+                        aria-label={`Контактные данные: ${student.fullName}, ${student.courseTitle}`}
                         onClick={() => {
                           setMobileDataOpenById((prev) => ({
                             ...prev,
@@ -295,7 +345,7 @@ export default function TeacherStudentsPage() {
                           <button
                             type="button"
                             className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                            disabled={busyRequestId === student.requestId}
+                            disabled={Boolean(busyRequestId)}
                             onClick={() => {
                               if (!student.requestId) return;
                               void reviewRequest(student.requestId, "approved");
@@ -309,7 +359,7 @@ export default function TeacherStudentsPage() {
                           <button
                             type="button"
                             className="inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
-                            disabled={busyRequestId === student.requestId}
+                            disabled={Boolean(busyRequestId)}
                             onClick={() => {
                               if (!student.requestId) return;
                               void reviewRequest(student.requestId, "rejected");
@@ -340,10 +390,11 @@ export default function TeacherStudentsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {students.map((student) => (
+                  {visibleStudents.map((student) => (
                     <tr key={student.id} className="border-b border-slate-100">
                       <td className="py-3 pr-3 font-medium">
                         {student.fullName}
+                        <p className="text-xs font-normal text-slate-600">{student.courseTitle}</p>
                       </td>
                       <td className="py-3 pr-3">
                         {student.email ? (
@@ -365,7 +416,7 @@ export default function TeacherStudentsPage() {
                             <button
                               type="button"
                               className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                              disabled={busyRequestId === student.requestId}
+                              disabled={Boolean(busyRequestId)}
                               onClick={() => {
                                 if (!student.requestId) return;
                                 void reviewRequest(
@@ -382,7 +433,7 @@ export default function TeacherStudentsPage() {
                             <button
                               type="button"
                               className="inline-flex items-center gap-1 rounded-md bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
-                              disabled={busyRequestId === student.requestId}
+                              disabled={Boolean(busyRequestId)}
                               onClick={() => {
                                 if (!student.requestId) return;
                                 void reviewRequest(

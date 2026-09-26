@@ -2,7 +2,7 @@ import type { UserRole } from "@prisma/client";
 import type { NextFunction, Response } from "express";
 import { lmsRepository } from "../repositories/lmsRepository";
 import type { AuthenticatedRequest } from "../types/auth";
-import { decodeToken } from "../utils/jwt";
+import { decodeToken, sessionStamp } from "../utils/jwt";
 
 const LAST_SEEN_UPDATE_INTERVAL_MS = 60 * 1000;
 
@@ -39,7 +39,7 @@ function getRequestToken(req: AuthenticatedRequest) {
   return getTokenFromCookieHeader(cookieHeader);
 }
 
-export async function verifyToken(
+async function authenticateRequest(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
@@ -57,11 +57,15 @@ export async function verifyToken(
 
   const currentUser = await lmsRepository.prisma.user.findUnique({
     where: { id: payload.sub },
-    select: { id: true, isBlocked: true, lastSeenAt: true },
+    select: { id: true, role: true, passwordHash: true, isBlocked: true, lastSeenAt: true },
   });
 
   if (!currentUser) {
     return res.status(401).json({ message: "Пользователь не найден" });
+  }
+
+  if (payload.sessionStamp !== sessionStamp(currentUser)) {
+    return res.status(401).json({ message: "Пароль изменён. Войдите в аккаунт снова." });
   }
 
   if (currentUser.isBlocked) {
@@ -85,8 +89,16 @@ export async function verifyToken(
       });
   }
 
-  req.user = payload;
+  req.user = { ...payload, role: currentUser.role };
   return next();
+}
+
+export function verifyToken(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  return authenticateRequest(req, res, next).catch(next);
 }
 
 export function requireAuth() {

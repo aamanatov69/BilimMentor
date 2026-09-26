@@ -4,6 +4,8 @@
   "private": true,
   "main": "dist/server.js",
   "scripts": {
+    "db:check": "node scripts/check-db.cjs",
+    "create:test-users": "tsx scripts/create-test-users.ts",
     "dev": "npm run build && concurrently \"npm:dev:tsc\" \"npm:dev:node\"",
     "dev:tsc": "tsc -w -p tsconfig.json",
     "dev:node": "node --watch dist/server.js",

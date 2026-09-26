@@ -104,6 +104,8 @@ model Enrollment {
   approvedByTeacherId String
   approvedAt          DateTime
   createdAt           DateTime @default(now())
+  lastViewedLessonId  String?
+  lastViewedAt        DateTime?
   course              Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   student             User     @relation("EnrollmentStudent", fields: [studentId], references: [id], onDelete: Cascade)
   approvedByTeacher   User     @relation("EnrollmentApprover", fields: [approvedByTeacherId], references: [id], onDelete: Restrict)

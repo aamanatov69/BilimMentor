@@ -1,9 +1,15 @@
 "use client";
 
+import { EmptyState } from "@/components/ui/empty-state";
+
+import { apiJson, apiErrorMessage } from "@/lib/api-client";
+
+import { CourseNavigation } from "@/components/dashboard/course-navigation";
+
 import "katex/dist/katex.min.css";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
@@ -98,6 +104,10 @@ function base64ToBlob(base64Raw: string, mimeType: string) {
 }
 
 export default function TeacherAssignmentsPage() {
+  return <Suspense fallback={<p role="status">Загрузка работ…</p>}><TeacherAssignmentsContent /></Suspense>;
+}
+
+function TeacherAssignmentsContent() {
   const searchParams = useSearchParams();
   const targetSubmissionId = searchParams.get("submissionId") ?? "";
   const [activeTab, setActiveTab] = useState<"unviewed" | "viewed">("unviewed");
@@ -107,13 +117,18 @@ export default function TeacherAssignmentsPage() {
   );
   const [error, setError] = useState("");
   const [busyAttachmentId, setBusyAttachmentId] = useState("");
-  const [listMaxHeight, setListMaxHeight] = useState<number | null>(null);
-  const listRef = useRef<HTMLDivElement | null>(null);
-
-  const isViewed = (item: AssignmentAnswerRow) =>
-    item.score !== null && typeof item.score !== "undefined"
-      ? true
-      : Boolean(item.feedback?.trim());
+  const [loading, setLoading] = useState(true);
+  const [retry, setRetry] = useState(0);
+  const [query, setQuery] = useState("");
+  const courseFilter = searchParams.get("course") ?? "";
+  const setCourseFilter = (value: string) => {
+    const params = new URLSearchParams(window.location.search);
+    if (value) params.set("course", value); else params.delete("course");
+    params.delete("submissionId");
+    window.history.pushState(null, "", `${window.location.pathname}?${params}`);
+  };
+  const [sort, setSort] = useState("oldest");
+  const isViewed = (item: AssignmentAnswerRow) => item.score !== null && item.score !== undefined;
 
   const getAttachmentBlobUrl = async (attachment: AttachmentItem) => {
     if (!attachment.dataBase64) {
@@ -180,75 +195,35 @@ export default function TeacherAssignmentsPage() {
 
   useEffect(() => {
     const loadRows = async () => {
+      setLoading(true);
+      setError("");
       try {
-        const response = await fetch(`${API_URL}/api/teacher/grades`, {
-          credentials: "include",
-        });
-
-        const data = (await response.json()) as {
-          rows?: AssignmentAnswerRow[];
-          message?: string;
-        };
-
-        if (!response.ok) {
-          setError(data.message ?? "Не удалось загрузить ответы студентов");
-          return;
-        }
+        const data = await apiJson<{ rows?: AssignmentAnswerRow[] }>("/api/teacher/grades");
 
         setRows(data.rows ?? []);
-      } catch {
-        setError("Ошибка сети");
+      } catch (error) {
+        setError(apiErrorMessage(error));
+      } finally {
+        setLoading(false);
       }
     };
 
     void loadRows();
-  }, []);
+  }, [retry]);
 
-  useEffect(() => {
-    const currentRows =
-      activeTab === "viewed"
-        ? rows.filter((item) => isViewed(item))
-        : rows.filter((item) => !isViewed(item));
+  const courseRows = rows.filter((item) => !courseFilter || item.courseId === courseFilter);
+  const viewedRows = courseRows.filter((item) => isViewed(item));
 
-    if (currentRows.length <= 4) {
-      setListMaxHeight(null);
-      return;
-    }
+  const unviewedRows = courseRows.filter((item) => !isViewed(item));
 
-    const updateHeight = () => {
-      const listElement = listRef.current;
-      if (!listElement) {
-        setListMaxHeight(null);
-        return;
-      }
-
-      const cards = Array.from(
-        listElement.querySelectorAll<HTMLElement>("[data-answer-card='true']"),
-      ).slice(0, 4);
-
-      if (cards.length < 4) {
-        setListMaxHeight(null);
-        return;
-      }
-
-      const cardsHeight = cards.reduce(
-        (total, card) => total + card.offsetHeight,
-        0,
-      );
-      const gapsHeight = 12 * 3;
-      setListMaxHeight(cardsHeight + gapsHeight);
-    };
-
-    updateHeight();
-    window.addEventListener("resize", updateHeight);
-    return () => window.removeEventListener("resize", updateHeight);
-  }, [rows, activeTab]);
-
-  const viewedRows = rows.filter((item) => isViewed(item));
-
-  const unviewedRows = rows.filter((item) => !isViewed(item));
-
-  const filteredRows = activeTab === "viewed" ? viewedRows : unviewedRows;
+  const courseOptions = [...new Map(rows.map((row) => [row.courseId, row.courseTitle])).entries()];
+  const filteredRows = (activeTab === "viewed" ? viewedRows : unviewedRows)
+    .filter((row) => (!courseFilter || row.courseId === courseFilter) &&
+      `${row.studentName} ${row.assignmentTitle}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+    .sort((a, b) => {
+      const delta = Date.parse(a.submittedAt) - Date.parse(b.submittedAt);
+      return (sort === "oldest" ? delta : -delta) || a.submissionId.localeCompare(b.submissionId);
+    });
 
   useEffect(() => {
     if (!targetSubmissionId || rows.length === 0) {
@@ -269,8 +244,9 @@ export default function TeacherAssignmentsPage() {
 
   return (
     <main className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      <CourseNavigation courseId={courseFilter} active="assignments" />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold sm:text-2xl">Задания</h1>
+        <h1 className="text-xl font-semibold sm:text-2xl">Проверка работ</h1>
         <Link
           href="/dashboard/teacher/grades"
           className="rounded border border-blue-200 px-3 py-1.5 text-sm text-blue-700 hover:bg-blue-50"
@@ -283,11 +259,12 @@ export default function TeacherAssignmentsPage() {
         Ответы студентов на задания, которые были даны в уроках.
       </p>
 
-      {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+      {error ? <div role="alert" className="mt-3 text-sm text-rose-600">{error} <button type="button" onClick={() => setRetry((value) => value + 1)} className="min-h-11 px-3 underline">Повторить загрузку</button></div> : null}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
           type="button"
+          aria-pressed={activeTab === "unviewed"}
           onClick={() => setActiveTab("unviewed")}
           className={
             activeTab === "unviewed"
@@ -295,10 +272,11 @@ export default function TeacherAssignmentsPage() {
               : "rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
           }
         >
-          Не просмотренные ({unviewedRows.length})
+          Ожидают оценки ({loading ? "…" : unviewedRows.length})
         </button>
         <button
           type="button"
+          aria-pressed={activeTab === "viewed"}
           onClick={() => setActiveTab("viewed")}
           className={
             activeTab === "viewed"
@@ -306,35 +284,25 @@ export default function TeacherAssignmentsPage() {
               : "rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
           }
         >
-          Просмотренные ({viewedRows.length})
+          Оценены ({loading ? "…" : viewedRows.length})
         </button>
       </div>
 
-      {filteredRows.length === 0 ? (
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-          <p>
-            {activeTab === "viewed"
-              ? "Пока нет просмотренных ответов студентов."
-              : "Пока нет не просмотренных ответов студентов."}
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            Новые ответы появятся после сдачи заданий студентами.
-          </p>
-        </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <label className="text-sm">Студент или задание<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border px-3" /></label>
+        <label className="text-sm">Курс<select value={courseFilter} onChange={(event) => setCourseFilter(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border bg-white px-3"><option value="">Все курсы</option>{courseOptions.map(([id, title]) => <option key={id} value={id}>{title}</option>)}</select></label>
+        <label className="text-sm">Порядок проверки<select value={sort} onChange={(event) => setSort(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border bg-white px-3"><option value="oldest">Дольше всего ждут</option><option value="newest">Сначала новые</option></select></label>
+      </div>
+      {!loading && !error && activeTab === "unviewed" && filteredRows.length > 0 ? <Link href={`/dashboard/teacher/grades?course=${encodeURIComponent(filteredRows[0].courseId)}&submissionId=${encodeURIComponent(filteredRows[0].submissionId)}`} className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-blue-700 px-4 font-semibold text-white">Проверить следующую работу</Link> : null}
+
+      {loading ? <p role="status" className="mt-4 p-4">Загрузка работ…</p> : error ? null : filteredRows.length === 0 ? (
+        <EmptyState className="mt-4"
+          title={query || courseFilter ? "Работы не найдены" : activeTab === "viewed" ? "Оценённых работ пока нет" : "Нет работ, ожидающих оценки"}
+          description={query || courseFilter ? "Измените запрос или выберите другой курс." : "Новые работы появятся после отправки студентами."}
+          action={query || courseFilter ? <button type="button" className="min-h-11 rounded-lg border bg-white px-4 text-sm font-semibold" onClick={() => { setQuery(""); setCourseFilter(""); }}>Сбросить фильтры</button> : <Link href="/dashboard/teacher/courses" className="inline-flex min-h-11 items-center rounded-lg border bg-white px-4 text-sm font-semibold">Перейти к курсам</Link>}
+        />
       ) : (
-        <div
-          ref={listRef}
-          className={
-            filteredRows.length > 4
-              ? "mt-4 space-y-3 overflow-y-auto pr-1"
-              : "mt-4 space-y-3"
-          }
-          style={
-            filteredRows.length > 4 && listMaxHeight
-              ? { maxHeight: listMaxHeight }
-              : undefined
-          }
-        >
+        <div className="mt-4 space-y-3">
           {filteredRows.map((row) => (
             <article
               data-answer-card="true"
@@ -367,13 +335,13 @@ export default function TeacherAssignmentsPage() {
                   Просмотреть
                 </button>
                 <Link
-                  href={`/dashboard/teacher/grades?submissionId=${row.submissionId}`}
+                  href={`/dashboard/teacher/grades?course=${encodeURIComponent(row.courseId)}&submissionId=${encodeURIComponent(row.submissionId)}`}
                   className="text-blue-700 hover:underline"
                 >
                   Комментарий
                 </Link>
                 <Link
-                  href={`/dashboard/teacher/grades?submissionId=${row.submissionId}`}
+                  href={`/dashboard/teacher/grades?course=${encodeURIComponent(row.courseId)}&submissionId=${encodeURIComponent(row.submissionId)}`}
                   className="text-blue-700 hover:underline"
                 >
                   Оценить
@@ -531,7 +499,7 @@ export default function TeacherAssignmentsPage() {
 
             <div className="mt-4 flex flex-wrap gap-2">
               <Link
-                href={`/dashboard/teacher/grades?submissionId=${previewRow.submissionId}`}
+                href={`/dashboard/teacher/grades?course=${encodeURIComponent(previewRow.courseId)}&submissionId=${encodeURIComponent(previewRow.submissionId)}`}
                 className="rounded bg-blue-700 px-3 py-2 text-sm text-white hover:bg-blue-800"
               >
                 Оценить

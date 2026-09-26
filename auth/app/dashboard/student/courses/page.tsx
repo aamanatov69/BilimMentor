@@ -1,7 +1,17 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
+import { StatusBadge } from "@/components/ui/status-badge";
+
+import { EmptyState } from "@/components/ui/empty-state";
+
+import { apiJson, apiErrorMessage } from "@/lib/api-client";
+
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { LoadError } from "@/components/ui/load-error";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -29,7 +39,21 @@ function levelLabel(level: CourseItem["level"]) {
 }
 
 export default function StudentCoursesPage() {
-  const [tab, setTab] = useState<"all" | "my" | "requests">("my");
+  return <Suspense fallback={<p role="status">Загрузка курсов…</p>}><StudentCoursesContent /></Suspense>;
+}
+
+function StudentCoursesContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const tab = requestedTab === "all" || requestedTab === "requests" ? requestedTab : "my";
+  const targetCourse = searchParams.get("course");
+  const setTab = (value: "all" | "my" | "requests") => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", value);
+    params.delete("course");
+    router.push(`/dashboard/student/courses?${params}`, { scroll: false });
+  };
   const [allCourses, setAllCourses] = useState<CourseItem[]>([]);
   const [myCourses, setMyCourses] = useState<CourseItem[]>([]);
   const [requests, setRequests] = useState<AccessRequest[]>([]);
@@ -37,57 +61,43 @@ export default function StudentCoursesPage() {
   const [error, setError] = useState("");
   const [busyCourseId, setBusyCourseId] = useState("");
 
+  const activeRequest = useRef<AbortController | null>(null);
   const loadData = async () => {
+    activeRequest.current?.abort();
+    const controller = new AbortController();
+    activeRequest.current = controller;
     setLoading(true);
     setError("");
 
     try {
-      const [allRes, myRes, reqRes] = await Promise.all([
-        fetch(`${API_URL}/api/student/courses/discover`, {
-          credentials: "include",
-        }),
-        fetch(`${API_URL}/api/student/courses`, { credentials: "include" }),
-        fetch(`${API_URL}/api/student/course-access-requests`, {
-          credentials: "include",
-        }),
+      const [allData, myData, reqData] = await Promise.all([
+        apiJson<{ courses?: CourseItem[] }>("/api/student/courses/discover", { signal: controller.signal }),
+        apiJson<{ courses?: CourseItem[] }>("/api/student/courses", { signal: controller.signal }),
+        apiJson<{ requests?: AccessRequest[] }>("/api/student/course-access-requests", { signal: controller.signal }),
       ]);
-
-      const allData = (await allRes.json()) as {
-        courses?: CourseItem[];
-        message?: string;
-      };
-      const myData = (await myRes.json()) as {
-        courses?: CourseItem[];
-        message?: string;
-      };
-      const reqData = (await reqRes.json()) as {
-        requests?: AccessRequest[];
-        message?: string;
-      };
-
-      if (!allRes.ok || !myRes.ok || !reqRes.ok) {
-        setError(
-          allData.message ??
-            myData.message ??
-            reqData.message ??
-            "Не удалось загрузить курсы",
-        );
-        return;
-      }
-
+      if (controller.signal.aborted) return;
       setAllCourses(allData.courses ?? []);
       setMyCourses(myData.courses ?? []);
       setRequests(reqData.requests ?? []);
-    } catch {
-      setError("Ошибка сети");
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setError(apiErrorMessage(error));
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   };
 
   useEffect(() => {
     void loadData();
+    return () => activeRequest.current?.abort();
   }, []);
+
+  useEffect(() => {
+    if (loading || tab !== "all" || !targetCourse) return;
+    const target = document.getElementById(`catalog-course-${targetCourse}`);
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: "center" });
+  }, [loading, tab, targetCourse]);
 
   const requestStatusByCourseId = useMemo(() => {
     const map = new Map<string, AccessRequest["status"]>();
@@ -107,7 +117,7 @@ export default function StudentCoursesPage() {
     setError("");
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/student/course-access-requests`,
         {
           method: "POST",
@@ -134,27 +144,7 @@ export default function StudentCoursesPage() {
     }
   };
 
-  const renderStatusPill = (status: AccessRequest["status"] | "approved") => {
-    if (status === "approved") {
-      return (
-        <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-          Доступ открыт
-        </span>
-      );
-    }
-    if (status === "pending") {
-      return (
-        <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
-          На рассмотрении
-        </span>
-      );
-    }
-    return (
-      <span className="rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-700">
-        Отклонено
-      </span>
-    );
-  };
+  const renderStatusPill = (status: AccessRequest["status"]) => <StatusBadge status={status} />;
 
   return (
     <main className="space-y-4">
@@ -200,11 +190,7 @@ export default function StudentCoursesPage() {
           </button>
         </div>
 
-        {error ? (
-          <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            {error}
-          </p>
-        ) : null}
+        {error ? <LoadError message={error} busy={loading} onRetry={() => void loadData()} /> : null}
       </section>
 
       {loading ? (
@@ -223,7 +209,7 @@ export default function StudentCoursesPage() {
         </section>
       ) : null}
 
-      {!loading && tab === "all" ? (
+      {!loading && !error && tab === "all" ? (
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {allCourses.length ? (
             allCourses.map((course) => {
@@ -234,7 +220,10 @@ export default function StudentCoursesPage() {
               return (
                 <article
                   key={course.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                  id={`catalog-course-${course.id}`}
+                  tabIndex={-1}
+                  aria-label={course.title}
+                  className={`rounded-2xl border bg-white p-4 shadow-sm ${targetCourse === course.id ? "border-blue-500 ring-2 ring-blue-200" : "border-slate-200"}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-sm font-semibold text-slate-900">
@@ -278,15 +267,12 @@ export default function StudentCoursesPage() {
               );
             })
           ) : (
-            <p className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 sm:col-span-2 lg:col-span-3">
-              Каталог пока пуст. Обновите страницу позже или перейдите в "Мои
-              курсы", если доступ уже выдан.
-            </p>
+            <EmptyState className="sm:col-span-2 lg:col-span-3" title="Каталог пока пуст" description="Новые курсы появятся после публикации. Уже доступные вам материалы находятся в разделе «Мои курсы»." action={<button type="button" onClick={() => setTab("my")} className="min-h-11 rounded-lg border bg-white px-4 text-sm font-semibold">Мои курсы</button>} />
           )}
         </section>
       ) : null}
 
-      {!loading && tab === "my" ? (
+      {!loading && !error && tab === "my" ? (
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {myCourses.length ? (
             myCourses.map((course) => (
@@ -298,9 +284,7 @@ export default function StudentCoursesPage() {
                   <p className="text-sm font-semibold text-slate-900">
                     {course.title}
                   </p>
-                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                    approved
-                  </span>
+                  <StatusBadge status="approved" />
                 </div>
                 <p className="mt-2 line-clamp-2 text-xs text-slate-600">
                   {course.description}
@@ -325,21 +309,12 @@ export default function StudentCoursesPage() {
               </article>
             ))
           ) : (
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 sm:col-span-2 lg:col-span-3">
-              <p>У вас пока нет одобренных курсов.</p>
-              <button
-                type="button"
-                onClick={() => setTab("all")}
-                className="mt-3 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-              >
-                Перейти в каталог
-              </button>
-            </div>
+            <EmptyState className="sm:col-span-2 lg:col-span-3" title="У вас пока нет доступных курсов" description="Выберите курс в каталоге и отправьте заявку. Её состояние можно посмотреть во вкладке заявок." action={<button type="button" onClick={() => setTab("all")} className="min-h-11 rounded-lg bg-blue-700 px-4 text-sm font-semibold text-white">Перейти в каталог</button>} />
           )}
         </section>
       ) : null}
 
-      {!loading && tab === "requests" ? (
+      {!loading && !error && tab === "requests" ? (
         <section className="space-y-2">
           {requests.length ? (
             requests.map((request) => (

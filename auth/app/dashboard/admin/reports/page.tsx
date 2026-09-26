@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
 import { useMemo, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -73,7 +75,7 @@ export default function AdminReportsPage() {
     setError("");
 
     try {
-      const response = await fetch(`${API_URL}/api/admin/reports`, {
+      const response = await apiFetch(`${API_URL}/api/admin/reports`, {
         credentials: "include",
       });
       const data = (await response.json()) as ReportResponse & {

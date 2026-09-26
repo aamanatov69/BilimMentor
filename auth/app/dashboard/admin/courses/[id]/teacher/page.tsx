@@ -1,4 +1,6 @@
-﻿"use client";
+"use client";
+
+import { apiFetch } from "@/lib/api-client";
 
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -19,7 +21,7 @@ export default function AdminAssignTeacherPage() {
     setError("");
     setMessage("");
     try {
-      const response = await fetch(`${API_URL}/api/admin/courses/${id}`, {
+      const response = await apiFetch(`${API_URL}/api/admin/courses/${id}`, {
           credentials: "include",
         method: "PUT",
         headers: {

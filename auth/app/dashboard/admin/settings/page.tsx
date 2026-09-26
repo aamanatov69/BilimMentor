@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -28,7 +30,7 @@ export default function AdminSettingsPage() {
 
   const loadSettings = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/admin/settings/overview`, {
+      const response = await apiFetch(`${API_URL}/api/admin/settings/overview`, {
         credentials: "include",
       });
       const data = (await response.json()) as {
@@ -91,7 +93,7 @@ export default function AdminSettingsPage() {
     setError("");
     setMessage("");
     try {
-      const response = await fetch(`${API_URL}/api/admin/system/${action}`, {
+      const response = await apiFetch(`${API_URL}/api/admin/system/${action}`, {
         credentials: "include",
         method: "POST",
       });

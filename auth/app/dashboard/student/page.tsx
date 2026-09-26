@@ -1,5 +1,7 @@
 "use client";
 
+import { apiJson, apiErrorMessage } from "@/lib/api-client";
+
 import { renderTextWithMathTypeTokensHtml } from "@/lib/math-render";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -20,6 +22,11 @@ type StudentOverview = {
     status: string;
     progress: number;
     completedByTeacher?: boolean;
+    completedLessons: number;
+    totalLessons: number;
+    nextLesson: { id: string; title: string } | null;
+    lastViewedAt?: string | null;
+    lastViewedLesson?: { id: string; title: string } | null;
   }[];
   assignments: {
     id: string;
@@ -44,13 +51,14 @@ function daysLeft(dateRaw: string | null) {
   const date = new Date(dateRaw);
   if (Number.isNaN(date.getTime())) return null;
   const diff = date.getTime() - Date.now();
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  return diff < 0 ? -1 : Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
 
 export default function StudentDashboardPage() {
   const [overview, setOverview] = useState<StudentOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
   const [courseFilter, setCourseFilter] = useState<"active" | "completed">(
     "active",
   );
@@ -61,29 +69,18 @@ export default function StudentDashboardPage() {
       setError("");
 
       try {
-        const response = await fetch(`${API_URL}/api/student/overview`, {
-          credentials: "include",
-        });
-
-        const data = (await response.json()) as StudentOverview & {
-          message?: string;
-        };
-
-        if (!response.ok) {
-          setError(data.message ?? "Не удалось загрузить дашборд");
-          return;
-        }
+        const data = await apiJson<StudentOverview>("/api/student/overview");
 
         setOverview(data);
-      } catch {
-        setError("Ошибка сети");
+      } catch (error) {
+        setError(apiErrorMessage(error));
       } finally {
         setLoading(false);
       }
     };
 
     void loadData();
-  }, []);
+  }, [retry]);
 
   const courseRows = useMemo(() => {
     const rows = overview?.currentCourses ?? [];
@@ -95,7 +92,11 @@ export default function StudentDashboardPage() {
 
   const dueSoonRows = useMemo(() => {
     return (overview?.assignments ?? [])
-      .filter((item) => item.dueSoon || item.status !== "Enabled")
+      .filter((item) => item.status !== "Enabled")
+      .sort((a, b) => {
+        const time = (value: string | null) => value && Number.isFinite(Date.parse(value)) ? Date.parse(value) : Infinity;
+        return time(a.dueDate) - time(b.dueDate) || a.id.localeCompare(b.id);
+      })
       .slice(0, 6);
   }, [overview?.assignments]);
 
@@ -106,8 +107,27 @@ export default function StudentDashboardPage() {
     Math.min(100, ((overview?.summary.gpa ?? 0) / 4) * 100),
   );
 
+  const nextCourse = (overview?.currentCourses ?? []).filter((course) => (course.lastViewedLesson || course.nextLesson) && !course.completedByTeacher)
+    .sort((a, b) => (Date.parse(b.lastViewedAt ?? "") || 0) - (Date.parse(a.lastViewedAt ?? "") || 0) || Number(b.progress > 0) - Number(a.progress > 0))[0];
+  const resumeLesson = nextCourse?.lastViewedLesson ?? nextCourse?.nextLesson;
+
+  if (loading) return <main aria-busy="true" className="space-y-4"><p role="status">Загрузка учебного кабинета…</p><div className="h-40 animate-pulse rounded-2xl bg-slate-100" /></main>;
+  if (error || !overview) return <main><div role="alert" className="rounded-xl bg-rose-50 p-5 text-rose-700"><p>{error || "Не удалось загрузить кабинет"}</p><button type="button" onClick={() => setRetry((value) => value + 1)} className="mt-3 min-h-11 rounded-lg border px-4">Повторить загрузку</button></div></main>;
+
   return (
     <main className="space-y-6">
+      <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5 sm:p-6">
+        <h1 className="text-2xl font-semibold text-slate-900">Моё обучение</h1>
+        {nextCourse && resumeLesson ? <>
+          <h2 className="mt-4 text-lg font-semibold">{nextCourse.name}</h2>
+          <p className="mt-1 text-slate-700">{nextCourse.lastViewedLesson ? "Последний просмотренный урок" : "Следующий непройденный урок"}: {resumeLesson.title}</p>
+          <p className="mt-2 text-sm text-slate-600">Пройдено {nextCourse.completedLessons} из {nextCourse.totalLessons} уроков</p>
+          <Link href={`/dashboard/student/courses/${nextCourse.id}?lesson=${encodeURIComponent(resumeLesson.id)}`} className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-blue-700 px-5 font-semibold text-white hover:bg-blue-800">{nextCourse.lastViewedLesson || nextCourse.progress > 0 ? "Продолжить обучение" : "Начать обучение"}</Link>
+        </> : <>
+          <p className="mt-3 text-slate-700">{overview.currentCourses.length ? "Новых уроков для прохождения пока нет. Можно повторить материалы или выбрать другой курс." : "Выберите курс в каталоге, чтобы начать обучение."}</p>
+          <Link href="/dashboard/student/courses?tab=all" className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-blue-700 px-5 font-semibold text-white">Открыть каталог</Link>
+        </>}
+      </section>
       {error ? (
         <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
@@ -121,6 +141,7 @@ export default function StudentDashboardPage() {
             <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1 text-xs font-semibold">
               <button
                 type="button"
+                aria-pressed={courseFilter === "active"}
                 onClick={() => setCourseFilter("active")}
                 className={
                   courseFilter === "active"
@@ -132,6 +153,7 @@ export default function StudentDashboardPage() {
               </button>
               <button
                 type="button"
+                aria-pressed={courseFilter === "completed"}
                 onClick={() => setCourseFilter("completed")}
                 className={
                   courseFilter === "completed"
@@ -171,7 +193,7 @@ export default function StudentDashboardPage() {
                     />
                   </div>
                   <p className="mt-1 text-xs text-slate-500">
-                    Пройдено: {Math.max(0, Math.min(100, course.progress))}%
+                    Пройдено {course.completedLessons} из {course.totalLessons} уроков ({Math.max(0, Math.min(100, course.progress))}%)
                   </p>
                   <Link
                     href={`/dashboard/student/courses/${course.id}`}
@@ -191,7 +213,7 @@ export default function StudentDashboardPage() {
         </article>
 
         <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-xl font-semibold text-slate-900">Дедлайны</h2>
+          <h2 className="text-xl font-semibold text-slate-900">Задания к выполнению</h2>
           <div className="mt-4 space-y-2">
             {dueSoonRows.length ? (
               dueSoonRows.map((item) => {
@@ -211,6 +233,7 @@ export default function StudentDashboardPage() {
                     <p className="mt-0.5 text-xs text-slate-600">
                       {item.course}
                     </p>
+                    {item.dueDate ? <p className="mt-1 text-xs text-slate-500">Сдать до {new Date(item.dueDate).toLocaleString("ru-RU")}</p> : null}
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <span
                         className={
@@ -223,28 +246,16 @@ export default function StudentDashboardPage() {
                           ? "Дата не указана"
                           : left < 0
                             ? "Просрочено"
-                            : `${left} дн.`}
+                            : left <= 1 ? "Менее суток" : `${left} дн.`}
                       </span>
-                      <div className="h-2 w-24 overflow-hidden rounded-full bg-slate-200">
-                        <div
-                          className={
-                            urgent
-                              ? "h-full bg-rose-500"
-                              : "h-full bg-amber-500"
-                          }
-                          style={{
-                            width: `${left === null ? 35 : Math.max(8, Math.min(100, 100 - left * 8))}%`,
-                          }}
-                        />
-                      </div>
+                      <Link href={`/dashboard/student/assignments#assignment-${encodeURIComponent(item.id)}`} className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">Открыть задание</Link>
                     </div>
                   </div>
                 );
               })
             ) : (
               <p className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-                Срочных дедлайнов нет. Отличный момент продвинуться в текущем
-                курсе.
+                Невыполненных заданий нет. Можно продолжить обучение.
               </p>
             )}
           </div>
@@ -254,7 +265,7 @@ export default function StudentDashboardPage() {
       <section className="grid gap-6 xl:grid-cols-[1fr_1.6fr]">
         <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-xl font-semibold text-slate-900">
-            GPA и динамика
+            Средний балл (GPA)
           </h2>
           <p className="mt-3 text-4xl font-bold text-slate-900">
             {(overview?.summary.gpa ?? 0).toFixed(2)}

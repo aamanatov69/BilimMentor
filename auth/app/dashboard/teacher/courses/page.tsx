@@ -1,22 +1,20 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-client";
+
+import { CourseNavigation } from "@/components/dashboard/course-navigation";
+import { apiJson, apiErrorMessage } from "@/lib/api-client";
+
+import { LoadError } from "@/components/ui/load-error";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
-import {
-  BookOpen,
-  Copy,
-  Download,
-  MessageCircle,
-  Plus,
-  QrCode,
-  Send,
-  Share2,
-  Trash2,
-  X,
-} from "lucide-react";
+import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { CourseListSection } from "./course-list-section";
+import { LessonListSection } from "./lesson-list-section";
+import { ShareCourseModal } from "./share-course-modal";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -45,6 +43,10 @@ function getCourseLevelLabel(level: CourseItem["level"]) {
 }
 
 export default function TeacherCoursesPage() {
+  return <Suspense fallback={<p role="status">Загрузка…</p>}><TeacherCoursesContent /></Suspense>;
+}
+
+function TeacherCoursesContent() {
   const searchParams = useSearchParams();
   const [courses, setCourses] = useState<CourseItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -55,6 +57,11 @@ export default function TeacherCoursesPage() {
     "newest",
   );
   const [error, setError] = useState("");
+  const [coursesError, setCoursesError] = useState("");
+  const [lessonsError, setLessonsError] = useState("");
+  const [loadingCourses, setLoadingCourses] = useState(true);
+  const coursesRequest = useRef<AbortController | null>(null);
+  const lessonsRequest = useRef<AbortController | null>(null);
   const [busyCourseId, setBusyCourseId] = useState("");
   const [busyLessonId, setBusyLessonId] = useState("");
   const [deleteCourseId, setDeleteCourseId] = useState("");
@@ -81,16 +88,6 @@ export default function TeacherCoursesPage() {
   const [isQrGenerating, setIsQrGenerating] = useState(false);
   const isCreated = searchParams.get("created") === "1";
 
-  const shareText = shareCourseTitle
-    ? `Присоединяйтесь к курсу \"${shareCourseTitle}\" в BilimMentor`
-    : "Присоединяйтесь к курсу в BilimMentor";
-  const whatsappShareUrl = shareLink
-    ? `https://wa.me/?text=${encodeURIComponent(`${shareText}\n${shareLink}`)}`
-    : "#";
-  const telegramShareUrl = shareLink
-    ? `https://t.me/share/url?url=${encodeURIComponent(shareLink)}&text=${encodeURIComponent(shareText)}`
-    : "#";
-
   const mapLessons = (modules: Array<Record<string, unknown>> | undefined) => {
     const list = Array.isArray(modules) ? modules : [];
     return list
@@ -112,71 +109,65 @@ export default function TeacherCoursesPage() {
     mapLessons(course.modules).length;
 
   const loadCourses = async () => {
-    const response = await fetch(`${API_URL}/api/teacher/courses`, {
-      credentials: "include",
-    });
-
-    const data = (await response.json()) as {
-      courses?: CourseItem[];
-      message?: string;
-    };
-
-    if (!response.ok) {
-      setError(data.message ?? "Не удалось загрузить курсы");
-      return;
+    coursesRequest.current?.abort();
+    const controller = new AbortController();
+    coursesRequest.current = controller;
+    setLoadingCourses(true);
+    setCoursesError("");
+    try {
+      const data = await apiJson<{ courses?: CourseItem[] }>("/api/teacher/courses", { signal: controller.signal });
+      if (!controller.signal.aborted) setCourses(data.courses ?? []);
+    } catch (error) {
+      if (!controller.signal.aborted) setCoursesError(apiErrorMessage(error));
+    } finally {
+      if (!controller.signal.aborted) setLoadingCourses(false);
     }
-
-    setCourses(data.courses ?? []);
   };
 
   const loadCourseLessons = async (courseId: string, courseTitle: string) => {
+    lessonsRequest.current?.abort();
+    const controller = new AbortController();
+    lessonsRequest.current = controller;
     setViewCourseId(courseId);
     setViewCourseTitle(courseTitle);
+    setViewLessons([]);
     setIsLoadingLessons(true);
-    setError("");
-
+    setLessonsError("");
     try {
-      const response = await fetch(
-        `${API_URL}/api/teacher/courses/${courseId}/details`,
-        {
-          credentials: "include",
-        },
+      const data = await apiJson<{ course?: { modules?: Array<Record<string, unknown>> } }>(
+        `/api/teacher/courses/${encodeURIComponent(courseId)}/details`, { signal: controller.signal },
       );
-
-      const data = (await response.json()) as {
-        course?: { modules?: Array<Record<string, unknown>> };
-        message?: string;
-      };
-
-      if (!response.ok) {
-        setError(data.message ?? "Не удалось загрузить уроки курса");
-        setViewLessons([]);
-        return;
-      }
-
-      setViewLessons(mapLessons(data.course?.modules));
-    } catch {
-      setError("Ошибка сети при загрузке уроков");
-      setViewLessons([]);
+      if (!controller.signal.aborted) setViewLessons(mapLessons(data.course?.modules));
+    } catch (error) {
+      if (!controller.signal.aborted) setLessonsError(apiErrorMessage(error));
     } finally {
-      setIsLoadingLessons(false);
+      if (!controller.signal.aborted) setIsLoadingLessons(false);
     }
   };
 
   useEffect(() => {
     void loadCourses();
+    return () => { coursesRequest.current?.abort(); lessonsRequest.current?.abort(); };
   }, []);
 
   useEffect(() => {
-    // Auto-open lessons view if course parameter is present
+    lessonsRequest.current?.abort();
     const courseId = searchParams.get("course")?.trim() ?? "";
-    if (courseId && courses.length > 0) {
-      const course = courses.find((c) => c.id === courseId);
-      if (course) {
-        void loadCourseLessons(courseId, course.title);
-      }
+    setViewCourseId(courseId);
+    setViewCourseTitle("");
+    setViewLessons([]);
+    setLessonsError("");
+    setIsLoadingLessons(Boolean(courseId));
+    if (!courseId || loadingCourses || coursesError) return;
+    const course = courses.find((item) => item.id === courseId);
+    if (!course) {
+      setLessonsError("Курс не найден или больше недоступен. Вернитесь к списку курсов.");
+      setIsLoadingLessons(false);
+      return;
     }
-  }, [searchParams, courses]);
+    void loadCourseLessons(courseId, course.title);
+    return () => lessonsRequest.current?.abort();
+  }, [searchParams, courses, loadingCourses, coursesError]);
 
   useEffect(() => {
     let cancelled = false;
@@ -225,7 +216,7 @@ export default function TeacherCoursesPage() {
     setError("");
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/teacher/courses/${courseId}/visibility`,
         {
           credentials: "include",
@@ -319,7 +310,7 @@ export default function TeacherCoursesPage() {
     setIsDeletingCourse(true);
     setError("");
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/teacher/courses/${deleteCourseId}`,
         {
           credentials: "include",
@@ -351,7 +342,7 @@ export default function TeacherCoursesPage() {
     setIsEndingCourse(true);
     setError("");
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/teacher/courses/${endCourseId}/complete`,
         {
           credentials: "include",
@@ -383,7 +374,7 @@ export default function TeacherCoursesPage() {
     setError("");
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/teacher/courses/${courseId}/lessons/${lesson.id}/visibility`,
         {
           credentials: "include",
@@ -423,7 +414,7 @@ export default function TeacherCoursesPage() {
     setError("");
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/teacher/courses/${deleteLessonCourseId}/lessons/${deleteLessonId}`,
         {
           credentials: "include",
@@ -475,20 +466,13 @@ export default function TeacherCoursesPage() {
     setIsShareLoading(true);
 
     try {
-      const response = await fetch(
-        `${API_URL}/api/teacher/courses/${courseId}/share-invite`,
-        {
-          credentials: "include",
-        },
-      );
-
-      const data = (await response.json()) as {
+      const data = await apiJson<{
         inviteToken?: string;
         expiresAt?: string | null;
         message?: string;
-      };
+      }>(`/api/teacher/courses/${encodeURIComponent(courseId)}/share-invite`);
 
-      if (!response.ok || !data.inviteToken) {
+      if (!data.inviteToken) {
         setShareError(data.message ?? "Не удалось создать ссылку для курса");
         return;
       }
@@ -498,8 +482,8 @@ export default function TeacherCoursesPage() {
 
       setShareLink(registerUrl);
       setShareInviteExpiresAt(data.expiresAt ?? "");
-    } catch {
-      setShareError("Ошибка сети при создании ссылки для курса");
+    } catch (error) {
+      setShareError(apiErrorMessage(error));
     } finally {
       setIsShareLoading(false);
     }
@@ -564,13 +548,14 @@ export default function TeacherCoursesPage() {
 
   return (
     <main className="p-0 md:rounded-xl md:border md:border-slate-200 md:bg-white md:p-4 md:shadow-sm lg:p-6">
+      <CourseNavigation courseId={viewCourseId} active="courses" />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">
           {viewCourseId ? "Уроки" : "Курсы"}
         </h1>
         {viewCourseId ? (
           <Link
-            href="/dashboard/teacher"
+            href="/dashboard/teacher/courses"
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-400 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:w-auto"
           >
             Назад к курсам
@@ -594,330 +579,44 @@ export default function TeacherCoursesPage() {
 
       {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
 
-      {!viewCourseId ? (
-        <section className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-          <div className="grid gap-2 md:grid-cols-[1.4fr_auto_auto]">
-            <input
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Поиск по курсам"
-              className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none"
-            />
-            <select
-              value={statusFilter}
-              onChange={(event) =>
-                setStatusFilter(
-                  event.target.value as "all" | "published" | "draft",
-                )
-              }
-              className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none"
-            >
-              <option value="all">Все статусы</option>
-              <option value="published">Опубликованные</option>
-              <option value="draft">Черновики</option>
-            </select>
-            <select
-              value={sortBy}
-              onChange={(event) =>
-                setSortBy(event.target.value as "newest" | "students" | "title")
-              }
-              className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none"
-            >
-              <option value="newest">Сначала новые</option>
-              <option value="students">По числу студентов</option>
-              <option value="title">По названию</option>
-            </select>
-          </div>
-        </section>
+      {loadingCourses ? <p role="status" className="mt-4 text-sm text-slate-600">Загрузка курсов…</p> : coursesError ? (
+        <LoadError message={coursesError} onRetry={() => void loadCourses()} />
+      ) : null}
+      {!loadingCourses && !coursesError && viewCourseId && lessonsError ? (
+        <LoadError message={lessonsError} onRetry={() => void loadCourses()} />
       ) : null}
 
-      {!viewCourseId && displayedCourses.length === 0 ? (
-        <p className="mt-4 text-sm text-slate-600">Курсы пока не добавлены.</p>
+      {viewCourseId && !loadingCourses && !coursesError && !lessonsError ? (
+        <LessonListSection
+          viewCourseId={viewCourseId}
+          viewCourseTitle={viewCourseTitle}
+          viewLessons={viewLessons}
+          isLoadingLessons={isLoadingLessons}
+          busyLessonId={busyLessonId}
+          onToggleLessonVisibility={(lesson) => void toggleLessonVisibility(viewCourseId, lesson)}
+          onOpenDeleteLessonModal={(lessonId, lessonTitle) => openDeleteLessonModal(viewCourseId, lessonId, lessonTitle)}
+        />
       ) : null}
 
-      {viewCourseId ? (
-        <section className="mt-4 space-y-3">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">
-                  {viewCourseTitle}
-                </h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  Список уроков выбранного курса.
-                </p>
-              </div>
-              <Link
-                href={`/dashboard/teacher/courses/new?courseId=${viewCourseId}`}
-                className="inline-flex items-center gap-2 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 whitespace-nowrap"
-              >
-                Редактировать курс
-              </Link>
-            </div>
-          </div>
-
-          {isLoadingLessons ? (
-            <p className="text-sm text-slate-600">Загрузка уроков...</p>
-          ) : viewLessons.length === 0 ? (
-            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-              В этом курсе пока нет уроков.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {viewLessons.map((lesson, index) => (
-                <article
-                  key={lesson.id}
-                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-base font-semibold text-slate-900">
-                        {index + 1}. {lesson.title}
-                      </p>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {lesson.isVisibleToStudents
-                          ? "Показан студентам"
-                          : "Скрыт от студентов"}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Link
-                        href={`/dashboard/teacher/courses/new?courseId=${viewCourseId}&lessonId=${lesson.id}`}
-                        className="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
-                      >
-                        Редактировать
-                      </Link>
-                      <button
-                        type="button"
-                        disabled={busyLessonId === lesson.id}
-                        onClick={() =>
-                          void toggleLessonVisibility(viewCourseId, lesson)
-                        }
-                        className="rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-60"
-                      >
-                        {lesson.isVisibleToStudents ? "Скрыть" : "Показать"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busyLessonId === lesson.id}
-                        onClick={() =>
-                          openDeleteLessonModal(
-                            viewCourseId,
-                            lesson.id,
-                            lesson.title,
-                          )
-                        }
-                        className="inline-flex items-center justify-center rounded border border-rose-200 bg-rose-50 px-3 py-1.5 text-rose-700 hover:bg-rose-100 disabled:opacity-60"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-
-          <Link
-            href={`/dashboard/teacher/courses/new?courseId=${viewCourseId}&step=lesson`}
-            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
-          >
-            <Plus className="h-4 w-4" />
-            Добавить урок
-          </Link>
-        </section>
-      ) : null}
-
-      {!viewCourseId ? (
-        <div className="mt-4 space-y-3 md:hidden">
-          {displayedCourses.map((course) => (
-            <article
-              key={`mobile-${course.id}`}
-              className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() =>
-                    void loadCourseLessons(course.id, course.title)
-                  }
-                  className="flex min-w-0 flex-1 items-center gap-3 text-left hover:opacity-80"
-                >
-                  <div className="flex h-11 w-11 min-w-fit items-center justify-center rounded-lg bg-slate-700 text-white">
-                    <BookOpen className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-lg font-semibold leading-5 text-slate-900">
-                      {course.title}
-                    </p>
-                    <div className="mt-1 flex flex-wrap gap-3 text-sm text-slate-700">
-                      <p>{course.studentsCount ?? 0} студентов</p>
-                      <p>{getLessonsCount(course)} уроков</p>
-                    </div>
-                  </div>
-                </button>
-                {course.isPublished ? (
-                  <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700 whitespace-nowrap">
-                    Активен
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700 whitespace-nowrap">
-                    Черновик
-                  </span>
-                )}
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    void loadCourseLessons(course.id, course.title)
-                  }
-                  className="rounded border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Просмотр уроков
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void openShareModal(course.id, course.title)}
-                  className="inline-flex items-center gap-1 rounded border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100"
-                >
-                  <Share2 className="h-3.5 w-3.5" />
-                  Поделиться
-                </button>
-                {course.isPublished ? (
-                  <button
-                    type="button"
-                    onClick={() => openEndCourseModal(course.id, course.title)}
-                    disabled={isEndingCourse && endCourseId === course.id}
-                    className="rounded border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
-                  >
-                    Конец курса
-                  </button>
-                ) : null}
-              </div>
-            </article>
-          ))}
-        </div>
-      ) : null}
-
-      {!viewCourseId ? (
-        <div className="mobile-scroll mt-4 hidden overflow-x-auto md:block">
-          <table className="w-full min-w-[980px] border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200 text-left text-sm font-medium text-slate-600">
-                <th className="px-4 py-3">Курс</th>
-                <th className="px-4 py-3">Статус</th>
-                <th className="px-4 py-3">Студент</th>
-                <th className="px-4 py-3">Уроков</th>
-                <th className="px-4 py-3">Дата создания</th>
-                <th className="px-4 py-3">Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayedCourses.map((course) => (
-                <tr
-                  key={course.id}
-                  className="border-b border-slate-100 hover:bg-slate-50"
-                >
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded bg-blue-100">
-                        <BookOpen className="h-5 w-5 text-blue-700" />
-                      </div>
-                      <span className="text-sm font-medium text-slate-900">
-                        {course.title}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    {course.isPublished ? (
-                      <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
-                        Активен
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                        Черновик
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-700">
-                    {course.studentsCount ?? 0}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-700">
-                    {getLessonsCount(course)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-600">
-                    {new Date(course.createdAt).toLocaleDateString("ru-RU")}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void loadCourseLessons(course.id, course.title)
-                        }
-                        className="rounded border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                      >
-                        Просмотр
-                      </button>
-                      {course.isPublished ? (
-                        <button
-                          className="rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
-                          disabled={busyCourseId === course.id}
-                          onClick={() =>
-                            void updateVisibility(course.id, false)
-                          }
-                        >
-                          Скрыть
-                        </button>
-                      ) : (
-                        <button
-                          className="rounded border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
-                          disabled={busyCourseId === course.id}
-                          onClick={() => void updateVisibility(course.id, true)}
-                        >
-                          Опубликовать
-                        </button>
-                      )}
-                      {course.isPublished ? (
-                        <button
-                          type="button"
-                          className="rounded border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
-                          disabled={isEndingCourse && endCourseId === course.id}
-                          onClick={() =>
-                            openEndCourseModal(course.id, course.title)
-                          }
-                        >
-                          Конец курса
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void openShareModal(course.id, course.title)
-                        }
-                        className="inline-flex items-center justify-center rounded border border-sky-200 bg-sky-50 px-3 py-1.5 text-sky-700 hover:bg-sky-100"
-                        aria-label="Поделиться курсом"
-                        title="Поделиться"
-                      >
-                        <Share2 className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openDeleteModal(course.id, course.title)}
-                        className="inline-flex items-center justify-center rounded border border-rose-200 bg-rose-50 px-3 py-1.5 text-rose-700 hover:bg-rose-100"
-                        aria-label="Удалить курс"
-                        title="Удалить"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {!viewCourseId && !loadingCourses && !coursesError ? (
+        <CourseListSection
+          displayedCourses={displayedCourses}
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
+          getLessonsCount={getLessonsCount}
+          busyCourseId={busyCourseId}
+          endCourseId={endCourseId}
+          isEndingCourse={isEndingCourse}
+          onLoadCourseLessons={(courseId) => window.history.pushState(null, "", `/dashboard/teacher/courses?course=${encodeURIComponent(courseId)}`)}
+          onUpdateVisibility={(courseId, isPublished) => void updateVisibility(courseId, isPublished)}
+          onOpenEndCourseModal={openEndCourseModal}
+          onOpenDeleteModal={openDeleteModal}
+          onOpenShareModal={(courseId, courseTitle) => void openShareModal(courseId, courseTitle)}
+        />
       ) : null}
 
       <ConfirmModal
@@ -965,130 +664,21 @@ export default function TeacherCoursesPage() {
         onConfirm={() => void deleteLesson()}
       />
 
-      {shareCourseId ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
-          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900">
-                  Поделиться курсом
-                </h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  {shareCourseTitle}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeShareModal}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
-                aria-label="Закрыть"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {shareError ? (
-              <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {shareError}
-              </p>
-            ) : null}
-
-            {isShareLoading ? (
-              <p className="mt-4 text-sm text-slate-600">
-                Подготавливаем ссылку приглашения...
-              </p>
-            ) : shareLink ? (
-              <div className="mt-4 grid gap-4 md:grid-cols-[1fr_240px]">
-                <div className="space-y-3">
-                  <p className="text-sm text-slate-700">
-                    Отправьте ссылку или QR-код. После регистрации по ним
-                    студент автоматически получит доступ к курсу.
-                  </p>
-
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Ссылка для регистрации
-                    </p>
-                    <p className="break-all text-sm text-slate-800">
-                      {shareLink}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => void copyShareLink()}
-                      className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                    >
-                      <Copy className="h-4 w-4" />
-                      {isShareCopied ? "Скопировано" : "Копировать ссылку"}
-                    </button>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <a
-                      href={whatsappShareUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100"
-                    >
-                      <MessageCircle className="h-4 w-4" />
-                      WhatsApp
-                    </a>
-                    <a
-                      href={telegramShareUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-100"
-                    >
-                      <Send className="h-4 w-4" />
-                      Telegram
-                    </a>
-                  </div>
-
-                  {shareInviteExpiresAt ? (
-                    <p className="text-xs text-slate-500">
-                      Ссылка действует до{" "}
-                      {new Date(shareInviteExpiresAt).toLocaleString("ru-RU")}
-                    </p>
-                  ) : null}
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="mb-2 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    <QrCode className="h-4 w-4" />
-                    QR код курса
-                  </p>
-                  {isQrGenerating ? (
-                    <div className="flex h-52 w-52 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm text-slate-500">
-                      Генерация QR...
-                    </div>
-                  ) : qrCodeDataUrl ? (
-                    <img
-                      src={qrCodeDataUrl}
-                      alt="QR-код приглашения на курс"
-                      className="h-52 w-52 rounded-lg border border-slate-200 bg-white object-contain"
-                    />
-                  ) : (
-                    <div className="flex h-52 w-52 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm text-slate-500">
-                      QR недоступен
-                    </div>
-                  )}
-
-                  <div className="mt-3 flex flex-col gap-2">
-                    <button
-                      type="button"
-                      onClick={downloadQrCode}
-                      disabled={!qrCodeDataUrl || isQrGenerating}
-                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <Download className="h-4 w-4" />
-                      Скачать QR
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
+      <ShareCourseModal
+        shareCourseId={shareCourseId}
+        shareCourseTitle={shareCourseTitle}
+        shareLink={shareLink}
+        shareInviteExpiresAt={shareInviteExpiresAt}
+        isShareLoading={isShareLoading}
+        shareError={shareError}
+        isShareCopied={isShareCopied}
+        qrCodeDataUrl={qrCodeDataUrl}
+        isQrGenerating={isQrGenerating}
+        onClose={closeShareModal}
+        onCopyShareLink={() => void copyShareLink()}
+        onDownloadQrCode={downloadQrCode}
+        onRetry={() => void openShareModal(shareCourseId, shareCourseTitle)}
+      />
     </main>
   );
 }

@@ -1,25 +1,15 @@
 "use client";
 
+import { LoadError } from "@/components/ui/load-error";
+import { apiJson, apiErrorMessage } from "@/lib/api-client";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
-import {
-  BookOpen,
-  ClipboardCheck,
-  Copy,
-  Download,
-  MessageCircle,
-  QrCode,
-  Send,
-  Share2,
-  Star,
-  Trash2,
-  Users,
-  X,
-} from "lucide-react";
-import Link from "next/link";
+import { BookOpen, ClipboardCheck, Star, Users } from "lucide-react";
 import QRCode from "qrcode";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { CourseListSection } from "./course-list-section";
+import { ShareCourseModal } from "./share-course-modal";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 type OverviewResponse = {
   summary?: {
@@ -40,10 +30,16 @@ type OverviewResponse = {
   }>;
 };
 
+export type TeacherOverviewCourse = NonNullable<
+  OverviewResponse["courses"]
+>[number];
+
 export default function TeacherDashboardPage() {
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [retry, setRetry] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<
     "all" | "published" | "draft"
@@ -69,51 +65,23 @@ export default function TeacherDashboardPage() {
   const [isQrGenerating, setIsQrGenerating] = useState(false);
   const [info, setInfo] = useState("");
 
-  const shareText = shareCourseTitle
-    ? `Присоединяйтесь к курсу \"${shareCourseTitle}\" в BilimMentor`
-    : "Присоединяйтесь к курсу в BilimMentor";
-  const whatsappShareUrl = shareLink
-    ? `https://wa.me/?text=${encodeURIComponent(`${shareText}\n${shareLink}`)}`
-    : "#";
-  const telegramShareUrl = shareLink
-    ? `https://t.me/share/url?url=${encodeURIComponent(shareLink)}&text=${encodeURIComponent(shareText)}`
-    : "#";
-
   useEffect(() => {
+    const controller = new AbortController();
     const loadData = async () => {
       setLoading(true);
-      setError("");
+      setLoadError("");
       try {
-        const overviewResponse = await fetch(
-          `${API_URL}/api/teacher/overview`,
-          {
-            credentials: "include",
-          },
-        );
-
-        const overviewData =
-          (await overviewResponse.json()) as OverviewResponse & {
-            message?: string;
-          };
-
-        if (!overviewResponse.ok) {
-          setError(
-            overviewData.message ??
-              "Не удалось загрузить рабочее место преподавателя",
-          );
-          return;
-        }
-
-        setOverview(overviewData);
-      } catch {
-        setError("Ошибка сети");
+        const data = await apiJson<OverviewResponse>("/api/teacher/overview", { signal: controller.signal });
+        if (!controller.signal.aborted) setOverview(data);
+      } catch (error) {
+        if (!controller.signal.aborted) setLoadError(apiErrorMessage(error));
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
-
     void loadData();
-  }, []);
+    return () => controller.abort();
+  }, [retry]);
 
   useEffect(() => {
     let cancelled = false;
@@ -191,45 +159,6 @@ export default function TeacherDashboardPage() {
     [overview],
   );
 
-  const performanceRows = useMemo(
-    () =>
-      (overview?.courses ?? []).slice(0, 8).map((course) => {
-        const completion = Math.max(
-          0,
-          Math.min(100, Number(course.progress ?? 0)),
-        );
-
-        let statusLabel = "Нужно усилить контроль";
-        if (completion >= 75) {
-          statusLabel = "Высокая динамика";
-        } else if (completion >= 50) {
-          statusLabel = "Стабильная динамика";
-        }
-
-        return {
-          id: course.id,
-          title: course.title,
-          students: course.studentsCount ?? 0,
-          completion,
-          statusLabel,
-        };
-      }),
-    [overview?.courses],
-  );
-
-  const getLessonsCount = (
-    course: NonNullable<OverviewResponse["courses"]>[number],
-  ) => {
-    const modules = Array.isArray(course.modules) ? course.modules : [];
-    return modules.filter(
-      (item) =>
-        typeof item === "object" &&
-        item !== null &&
-        String((item as Record<string, unknown>).type ?? "").toLowerCase() ===
-          "lesson",
-    ).length;
-  };
-
   const displayedCourses = useMemo(() => {
     return [...(overview?.courses ?? [])]
       .filter((course) => {
@@ -266,8 +195,8 @@ export default function TeacherDashboardPage() {
     setInfo("");
 
     try {
-      const response = await fetch(
-        `${API_URL}/api/teacher/courses/${courseId}/visibility`,
+      await apiJson(
+        `/api/teacher/courses/${encodeURIComponent(courseId)}/visibility`,
         {
           credentials: "include",
           method: "PATCH",
@@ -277,12 +206,6 @@ export default function TeacherDashboardPage() {
           body: JSON.stringify({ isPublished }),
         },
       );
-
-      const data = (await response.json()) as { message?: string };
-      if (!response.ok) {
-        setError(data.message ?? "Не удалось изменить статус курса");
-        return;
-      }
 
       setOverview((prev) => {
         if (!prev?.courses) {
@@ -296,8 +219,8 @@ export default function TeacherDashboardPage() {
           ),
         };
       });
-    } catch {
-      setError("Ошибка сети при изменении статуса курса");
+    } catch (error) {
+      setError(apiErrorMessage(error));
     } finally {
       setBusyCourseId("");
     }
@@ -345,19 +268,13 @@ export default function TeacherDashboardPage() {
     setInfo("");
 
     try {
-      const response = await fetch(
-        `${API_URL}/api/teacher/courses/${deleteCourseId}`,
+      await apiJson(
+        `/api/teacher/courses/${encodeURIComponent(deleteCourseId)}`,
         {
           credentials: "include",
           method: "DELETE",
         },
       );
-
-      const data = (await response.json()) as { message?: string };
-      if (!response.ok) {
-        setError(data.message ?? "Не удалось удалить курс");
-        return;
-      }
 
       setOverview((prev) => {
         if (!prev?.courses) {
@@ -382,8 +299,8 @@ export default function TeacherDashboardPage() {
       setDeleteCourseId("");
       setDeleteCourseTitle("");
       setInfo("Курс удален");
-    } catch {
-      setError("Ошибка сети при удалении курса");
+    } catch (error) {
+      setError(apiErrorMessage(error));
     } finally {
       setIsDeletingCourse(false);
     }
@@ -417,20 +334,13 @@ export default function TeacherDashboardPage() {
     setInfo("");
 
     try {
-      const response = await fetch(
-        `${API_URL}/api/teacher/courses/${courseId}/share-invite`,
-        {
-          credentials: "include",
-        },
-      );
-
-      const data = (await response.json()) as {
+      const data = await apiJson<{
         inviteToken?: string;
         expiresAt?: string | null;
         message?: string;
-      };
+      }>(`/api/teacher/courses/${encodeURIComponent(courseId)}/share-invite`);
 
-      if (!response.ok || !data.inviteToken) {
+      if (!data.inviteToken) {
         setShareError(data.message ?? "Не удалось создать ссылку для курса");
         return;
       }
@@ -440,8 +350,8 @@ export default function TeacherDashboardPage() {
 
       setShareLink(registerUrl);
       setShareInviteExpiresAt(data.expiresAt ?? "");
-    } catch {
-      setShareError("Ошибка сети при создании ссылки для курса");
+    } catch (error) {
+      setShareError(apiErrorMessage(error));
     } finally {
       setIsShareLoading(false);
     }
@@ -484,19 +394,13 @@ export default function TeacherDashboardPage() {
     setInfo("");
 
     try {
-      const response = await fetch(
-        `${API_URL}/api/teacher/courses/${endCourseId}/complete`,
+      await apiJson(
+        `/api/teacher/courses/${encodeURIComponent(endCourseId)}/complete`,
         {
           credentials: "include",
           method: "PATCH",
         },
       );
-
-      const data = (await response.json()) as { message?: string };
-      if (!response.ok) {
-        setError(data.message ?? "Не удалось завершить курс");
-        return;
-      }
 
       setOverview((prev) => {
         if (!prev?.courses) {
@@ -507,7 +411,7 @@ export default function TeacherDashboardPage() {
           ...prev,
           courses: prev.courses.map((course) =>
             course.id === endCourseId
-              ? { ...course, isPublished: false }
+              ? { ...course, isPublished: false, progress: 100 }
               : course,
           ),
         };
@@ -516,31 +420,38 @@ export default function TeacherDashboardPage() {
       setEndCourseId("");
       setEndCourseTitle("");
       setInfo("Курс завершен");
-    } catch {
-      setError("Ошибка сети при завершении курса");
+    } catch (error) {
+      setError(apiErrorMessage(error));
     } finally {
       setIsEndingCourse(false);
     }
   };
 
-  const averageCompletion = useMemo(() => {
-    if (!performanceRows.length) {
-      return 0;
-    }
-
-    const total = performanceRows.reduce(
-      (acc, item) => acc + item.completion,
-      0,
-    );
-    return Math.round(total / performanceRows.length);
-  }, [performanceRows]);
-
-  const studentsEnrolled = overview?.summary?.studentsEnrolled ?? 0;
   const assignmentsToGrade = overview?.summary?.assignmentsToGrade ?? 0;
   const pendingRequests = overview?.summary?.pendingRequests ?? 0;
 
+  if (loading || loadError) {
+    return (
+      <main className="space-y-5">
+        <h1 className="text-2xl font-semibold text-slate-900">Рабочий день преподавателя</h1>
+        {loading ? (
+          <p role="status" className="rounded-xl border border-slate-200 bg-white p-6 text-slate-600">Загрузка курсов и статистики…</p>
+        ) : (
+          <LoadError message={loadError} onRetry={() => setRetry((value) => value + 1)} />
+        )}
+      </main>
+    );
+  }
+
   return (
     <main className="space-y-5">
+      <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
+        <h1 className="text-2xl font-semibold text-slate-900">Рабочий день преподавателя</h1>
+        <p className="mt-2 text-slate-700">
+          {loading ? "Загрузка очереди проверки…" : overview ? `Ожидают оценки: ${assignmentsToGrade}. Заявок на доступ: ${pendingRequests}.` : "Не удалось получить текущую нагрузку."}
+        </p>
+        <Link href="/dashboard/teacher/assignments" className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-blue-700 px-5 font-semibold text-white hover:bg-blue-800">Открыть очередь проверки</Link>
+      </section>
       {error ? (
         <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
@@ -578,394 +489,39 @@ export default function TeacherDashboardPage() {
         })}
       </section>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">Курсы</h2>
-          <Link
-            href="/dashboard/teacher/courses/new?reset=1"
-            className="inline-flex w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:w-auto"
-          >
-            Создать новый курс
+      <CourseListSection
+        courses={displayedCourses}
+        searchQuery={searchQuery}
+        onSearchQueryChange={setSearchQuery}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        sortBy={sortBy}
+        onSortByChange={setSortBy}
+        busyCourseId={busyCourseId}
+        endCourseId={endCourseId}
+        isEndingCourse={isEndingCourse}
+        deleteCourseId={deleteCourseId}
+        isDeletingCourse={isDeletingCourse}
+        shareCourseId={shareCourseId}
+        onUpdateVisibility={(courseId, isPublished) => void updateVisibility(courseId, isPublished)}
+        onOpenEndCourseModal={openEndCourseModal}
+        onOpenDeleteModal={openDeleteModal}
+        onOpenShareModal={(courseId, courseTitle) => void openShareModal(courseId, courseTitle)}
+      />
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900">Требуют внимания</h2>
+        <p className="mt-1 text-sm text-slate-600">Проверяйте ответы студентов и рассматривайте заявки на доступ к курсам.</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <Link href="/dashboard/teacher/assignments" className="rounded-xl border border-slate-200 p-4 hover:border-blue-300 hover:bg-blue-50">
+            <span className="block font-semibold text-slate-900">Проверка работ · {assignmentsToGrade}</span>
+            <span className="mt-1 block text-sm text-slate-600">{assignmentsToGrade ? "Открыть очередь и выставить оценки" : "Работ, ожидающих оценки, нет"}</span>
+          </Link>
+          <Link href="/dashboard/teacher/students?status=pending" className="rounded-xl border border-slate-200 p-4 hover:border-blue-300 hover:bg-blue-50">
+            <span className="block font-semibold text-slate-900">Заявки на доступ · {pendingRequests}</span>
+            <span className="mt-1 block text-sm text-slate-600">{pendingRequests ? "Открыть заявки, ожидающие решения" : "Новых заявок на доступ нет"}</span>
           </Link>
         </div>
-
-        <div className="mt-4 grid gap-2 md:grid-cols-[1.4fr_auto_auto]">
-          <input
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Поиск по курсам"
-            className="h-10 min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none"
-          />
-          <select
-            value={statusFilter}
-            onChange={(event) =>
-              setStatusFilter(
-                event.target.value as "all" | "published" | "draft",
-              )
-            }
-            className="h-10 min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none"
-          >
-            <option value="all">Все статусы</option>
-            <option value="published">Опубликованные</option>
-            <option value="draft">Черновики</option>
-          </select>
-          <select
-            value={sortBy}
-            onChange={(event) =>
-              setSortBy(event.target.value as "newest" | "students" | "title")
-            }
-            className="h-10 min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none"
-          >
-            <option value="newest">Сначала новые</option>
-            <option value="students">По числу студентов</option>
-            <option value="title">По названию</option>
-          </select>
-        </div>
-
-        {displayedCourses.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-600">
-            Курсы пока не добавлены.
-          </p>
-        ) : (
-          <>
-            <div className="mt-4 space-y-3 md:hidden">
-              {displayedCourses.map((course) => (
-                <article
-                  key={`mobile-${course.id}`}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-900">
-                        {course.title}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-600">
-                        {course.createdAt
-                          ? new Date(course.createdAt).toLocaleDateString(
-                              "ru-RU",
-                            )
-                          : "Дата не указана"}
-                      </p>
-                    </div>
-
-                    {course.isPublished ? (
-                      <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                        Активен
-                      </span>
-                    ) : (
-                      <span className="shrink-0 rounded-full bg-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
-                        Черновик
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-700 min-[360px]:grid-cols-2">
-                    <div className="rounded-lg border border-slate-200 bg-white px-2 py-1.5">
-                      <p className="text-[10px] uppercase tracking-wide text-slate-500">
-                        Студенты
-                      </p>
-                      <p className="mt-1 text-sm font-semibold text-slate-900">
-                        {course.studentsCount ?? 0}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-white px-2 py-1.5">
-                      <p className="text-[10px] uppercase tracking-wide text-slate-500">
-                        Уроки
-                      </p>
-                      <p className="mt-1 text-sm font-semibold text-slate-900">
-                        {getLessonsCount(course)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-1 gap-2 min-[360px]:grid-cols-2">
-                    <Link
-                      href={`/dashboard/teacher/courses?course=${course.id}`}
-                      className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                    >
-                      Просмотр
-                    </Link>
-
-                    {course.isPublished ? (
-                      <button
-                        type="button"
-                        className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100"
-                        disabled={busyCourseId === course.id}
-                        onClick={() => void updateVisibility(course.id, false)}
-                      >
-                        Скрыть
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
-                        disabled={busyCourseId === course.id}
-                        onClick={() => void updateVisibility(course.id, true)}
-                      >
-                        Опубликовать
-                      </button>
-                    )}
-
-                    <div className="min-[360px]:col-span-2 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white px-2 py-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
-                      {course.isPublished ? (
-                        <button
-                          type="button"
-                          className="rounded-md border border-rose-300 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
-                          disabled={isEndingCourse && endCourseId === course.id}
-                          onClick={() =>
-                            openEndCourseModal(course.id, course.title)
-                          }
-                        >
-                          Конец курса
-                        </button>
-                      ) : (
-                        <span className="text-[11px] text-slate-500">
-                          Для завершения сначала опубликуйте курс
-                        </span>
-                      )}
-
-                      <div className="flex items-center gap-2 self-end min-[420px]:self-auto">
-                        <button
-                          type="button"
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100"
-                          aria-label="Поделиться курсом"
-                          title="Поделиться"
-                          disabled={shareCourseId === course.id}
-                          onClick={() =>
-                            void openShareModal(course.id, course.title)
-                          }
-                        >
-                          <Share2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openDeleteModal(course.id, course.title)
-                          }
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                          aria-label="Удалить курс"
-                          title="Удалить"
-                          disabled={
-                            isDeletingCourse && deleteCourseId === course.id
-                          }
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-
-            <div className="mobile-scroll mt-4 hidden overflow-x-auto md:block">
-              <table className="w-full min-w-[980px] border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200 text-left text-sm font-medium text-slate-600">
-                    <th className="px-4 py-3">Курс</th>
-                    <th className="px-4 py-3">Статус</th>
-                    <th className="px-4 py-3">Студент</th>
-                    <th className="px-4 py-3">Уроков</th>
-                    <th className="px-4 py-3">Дата создания</th>
-                    <th className="px-4 py-3">Действия</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayedCourses.map((course) => (
-                    <tr
-                      key={course.id}
-                      className="border-b border-slate-100 hover:bg-slate-50"
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded bg-blue-100">
-                            <BookOpen className="h-5 w-5 text-blue-700" />
-                          </div>
-                          <span className="text-sm font-medium text-slate-900">
-                            {course.title}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {course.isPublished ? (
-                          <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
-                            Активен
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                            Черновик
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-700">
-                        {course.studentsCount ?? 0}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-700">
-                        {getLessonsCount(course)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-600">
-                        {course.createdAt
-                          ? new Date(course.createdAt).toLocaleDateString(
-                              "ru-RU",
-                            )
-                          : "-"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Link
-                            href={`/dashboard/teacher/courses?course=${course.id}`}
-                            className="rounded border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                          >
-                            Просмотр
-                          </Link>
-                          {course.isPublished ? (
-                            <button
-                              type="button"
-                              className="rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
-                              disabled={busyCourseId === course.id}
-                              onClick={() =>
-                                void updateVisibility(course.id, false)
-                              }
-                            >
-                              Скрыть
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className="rounded border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
-                              disabled={busyCourseId === course.id}
-                              onClick={() =>
-                                void updateVisibility(course.id, true)
-                              }
-                            >
-                              Опубликовать
-                            </button>
-                          )}
-                          {course.isPublished ? (
-                            <button
-                              type="button"
-                              className="rounded border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
-                              disabled={
-                                isEndingCourse && endCourseId === course.id
-                              }
-                              onClick={() =>
-                                openEndCourseModal(course.id, course.title)
-                              }
-                            >
-                              Конец курса
-                            </button>
-                          ) : null}
-                          <button
-                            type="button"
-                            className="inline-flex items-center justify-center rounded border border-sky-200 bg-sky-50 px-3 py-1.5 text-sky-700 hover:bg-sky-100"
-                            aria-label="Поделиться курсом"
-                            title="Поделиться"
-                            disabled={shareCourseId === course.id}
-                            onClick={() =>
-                              void openShareModal(course.id, course.title)
-                            }
-                          >
-                            <Share2 className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openDeleteModal(course.id, course.title)
-                            }
-                            className="inline-flex items-center justify-center rounded border border-rose-200 bg-rose-50 px-3 py-1.5 text-rose-700 hover:bg-rose-100"
-                            aria-label="Удалить курс"
-                            title="Удалить"
-                            disabled={
-                              isDeletingCourse && deleteCourseId === course.id
-                            }
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-      </section>
-
-      <section>
-        <article className="dashboard-rise rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">Успеваемость</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            График прогресса студентов по вашим курсам и текущая учебная
-            нагрузка.
-          </p>
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <article className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Средний прогресс
-              </p>
-              <p className="mt-2 text-2xl font-bold text-slate-900">
-                {loading ? "..." : `${averageCompletion}%`}
-              </p>
-            </article>
-
-            <article className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Студенты
-              </p>
-              <p className="mt-2 text-2xl font-bold text-slate-900">
-                {loading ? "..." : studentsEnrolled}
-              </p>
-            </article>
-
-            <article className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                На проверке
-              </p>
-              <p className="mt-2 text-2xl font-bold text-slate-900">
-                {loading ? "..." : assignmentsToGrade}
-              </p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                Заявки: {loading ? "..." : pendingRequests}
-              </p>
-            </article>
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-            {performanceRows.length ? (
-              <div className="flex h-48 items-end gap-2">
-                {performanceRows.slice(0, 6).map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex min-w-0 flex-1 flex-col items-center gap-2"
-                  >
-                    <div className="flex h-32 w-full items-end rounded-md bg-white px-1 py-1">
-                      <div
-                        className="w-full rounded-md bg-gradient-to-t from-cyan-500 to-emerald-500"
-                        style={{ height: `${Math.max(item.completion, 6)}%` }}
-                      />
-                    </div>
-                    <p className="text-[11px] font-semibold text-slate-700">
-                      {item.completion}%
-                    </p>
-                    <p
-                      className="w-full truncate text-center text-[10px] text-slate-500"
-                      title={item.title}
-                    >
-                      {item.title}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-slate-600">
-                Пока нет данных для графика успеваемости. Добавьте курс и
-                дождитесь первой активности студентов.
-              </p>
-            )}
-          </div>
-        </article>
       </section>
 
       <ConfirmModal
@@ -980,6 +536,7 @@ export default function TeacherDashboardPage() {
         cancelText="Отмена"
         tone="danger"
         isBusy={isEndingCourse}
+        error={error}
         onCancel={closeEndCourseModal}
         onConfirm={() => void completeCourse()}
       />
@@ -996,136 +553,26 @@ export default function TeacherDashboardPage() {
         cancelText="Отмена"
         tone="danger"
         isBusy={isDeletingCourse}
+        error={error}
         onCancel={closeDeleteModal}
         onConfirm={() => void deleteCourse()}
       />
 
-      {shareCourseId ? (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 p-2 sm:p-4">
-          <div className="mx-auto my-2 w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-3 shadow-xl sm:my-8 sm:p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h3 className="text-lg font-semibold text-slate-900">
-                  Поделиться курсом
-                </h3>
-                <p className="mt-1 truncate text-sm text-slate-600">
-                  {shareCourseTitle}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeShareModal}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
-                aria-label="Закрыть"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {shareError ? (
-              <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {shareError}
-              </p>
-            ) : null}
-
-            {isShareLoading ? (
-              <p className="mt-4 text-sm text-slate-600">
-                Подготавливаем ссылку приглашения...
-              </p>
-            ) : shareLink ? (
-              <div className="mt-4 grid gap-4 md:grid-cols-[1fr_240px]">
-                <div className="space-y-3">
-                  <p className="text-sm text-slate-700">
-                    Отправьте ссылку или QR-код. После регистрации по ним
-                    студент автоматически получит доступ к курсу.
-                  </p>
-
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Ссылка для регистрации
-                    </p>
-                    <p className="break-all text-sm text-slate-800">
-                      {shareLink}
-                    </p>
-                    <div className="mt-3 flex flex-col gap-2 min-[420px]:flex-row">
-                      <button
-                        type="button"
-                        onClick={() => void copyShareLink()}
-                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 min-[420px]:w-auto min-[420px]:justify-start"
-                      >
-                        <Copy className="h-4 w-4" />
-                        {isShareCopied ? "Скопировано" : "Копировать ссылку"}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-2 min-[420px]:flex-row">
-                    <a
-                      href={whatsappShareUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 min-[420px]:w-auto min-[420px]:justify-start"
-                    >
-                      <MessageCircle className="h-4 w-4" />
-                      WhatsApp
-                    </a>
-                    <a
-                      href={telegramShareUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-700 hover:bg-sky-100 min-[420px]:w-auto min-[420px]:justify-start"
-                    >
-                      <Send className="h-4 w-4" />
-                      Telegram
-                    </a>
-                  </div>
-
-                  {shareInviteExpiresAt ? (
-                    <p className="text-xs text-slate-500">
-                      Ссылка действует до{" "}
-                      {new Date(shareInviteExpiresAt).toLocaleString("ru-RU")}
-                    </p>
-                  ) : null}
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="mb-2 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    <QrCode className="h-4 w-4" />
-                    QR код курса
-                  </p>
-                  {isQrGenerating ? (
-                    <div className="mx-auto flex aspect-square w-full max-w-[208px] items-center justify-center rounded-lg border border-slate-200 bg-white text-sm text-slate-500">
-                      Генерация QR...
-                    </div>
-                  ) : qrCodeDataUrl ? (
-                    <img
-                      src={qrCodeDataUrl}
-                      alt="QR-код приглашения на курс"
-                      className="mx-auto aspect-square w-full max-w-[208px] rounded-lg border border-slate-200 bg-white object-contain"
-                    />
-                  ) : (
-                    <div className="mx-auto flex aspect-square w-full max-w-[208px] items-center justify-center rounded-lg border border-slate-200 bg-white text-sm text-slate-500">
-                      QR недоступен
-                    </div>
-                  )}
-
-                  <div className="mt-3 flex flex-col gap-2">
-                    <button
-                      type="button"
-                      onClick={downloadQrCode}
-                      disabled={!qrCodeDataUrl || isQrGenerating}
-                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <Download className="h-4 w-4" />
-                      Скачать QR
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
+      <ShareCourseModal
+        shareCourseId={shareCourseId}
+        shareCourseTitle={shareCourseTitle}
+        shareLink={shareLink}
+        shareInviteExpiresAt={shareInviteExpiresAt}
+        isShareLoading={isShareLoading}
+        shareError={shareError}
+        isShareCopied={isShareCopied}
+        qrCodeDataUrl={qrCodeDataUrl}
+        isQrGenerating={isQrGenerating}
+        onClose={closeShareModal}
+        onCopyShareLink={() => void copyShareLink()}
+        onDownloadQrCode={downloadQrCode}
+        onRetry={() => void openShareModal(shareCourseId, shareCourseTitle)}
+      />
     </main>
   );
 }

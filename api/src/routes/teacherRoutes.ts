@@ -1,0 +1,171 @@
+import { UserRole } from "@prisma/client";
+import { Router } from "express";
+import { teacherController } from "../controllers/teacherController";
+import { asyncHandler } from "../middleware/asyncHandler";
+import { requireRole, verifyToken } from "../middleware/auth";
+
+export const teacherRoutes = Router();
+
+teacherRoutes.get(
+  "/api/teacher/course-access-requests",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherListCourseAccessRequests),
+);
+teacherRoutes.patch(
+  "/api/teacher/course-access-requests/:id",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherReviewCourseAccessRequest),
+);
+teacherRoutes.get(
+  "/api/teacher/courses",
+  verifyToken,
+  requireRole([UserRole.teacher, UserRole.admin]),
+  asyncHandler(teacherController.teacherCourses),
+);
+teacherRoutes.get(
+  "/api/teacher/courses/:id/details",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherCourseDetails),
+);
+teacherRoutes.get(
+  "/api/teacher/courses/:id/share-invite",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherCreateCourseShareInvite),
+);
+teacherRoutes.post(
+  "/api/teacher/courses",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherCreateCourse),
+);
+teacherRoutes.patch(
+  "/api/teacher/courses/:id/visibility",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherSetCourseVisibility),
+);
+teacherRoutes.patch(
+  "/api/teacher/courses/:id/complete",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherCompleteCourse),
+);
+
+teacherRoutes.put(
+  "/api/teacher/courses/:id",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherUpdateCourse),
+);
+teacherRoutes.delete(
+  "/api/teacher/courses/:id",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherDeleteCourse),
+);
+teacherRoutes.post(
+  "/api/teacher/courses/:id/assignments",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherCreateAssignment),
+);
+teacherRoutes.patch(
+  "/api/teacher/assignments/:id/deadline",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherUpdateAssignmentDeadline),
+);
+teacherRoutes.put(
+  "/api/teacher/assignments/:id",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherUpdateAssignment),
+);
+teacherRoutes.delete(
+  "/api/teacher/assignments/:id",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherDeleteAssignment),
+);
+teacherRoutes.post(
+  "/api/teacher/courses/:id/materials",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherUploadMaterial),
+);
+teacherRoutes.post(
+  "/api/teacher/courses/:id/lessons",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherCreateLesson),
+);
+teacherRoutes.put(
+  "/api/teacher/courses/:id/lessons/:lessonId",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherUpdateLesson),
+);
+teacherRoutes.delete(
+  "/api/teacher/courses/:id/lessons/:lessonId",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherDeleteLesson),
+);
+teacherRoutes.patch(
+  "/api/teacher/courses/:id/lessons/reorder",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherReorderLessons),
+);
+teacherRoutes.post(
+  "/api/teacher/courses/:id/lessons/:lessonId/materials",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherAddLessonMaterial),
+);
+teacherRoutes.delete(
+  "/api/teacher/courses/:id/lessons/:lessonId/materials/:materialId",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherDeleteLessonMaterial),
+);
+teacherRoutes.patch(
+  "/api/teacher/courses/:id/lessons/:lessonId/visibility",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherSetLessonVisibility),
+);
+teacherRoutes.post(
+  "/api/teacher/courses/:id/students/:studentId/message",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherMessageStudent),
+);
+teacherRoutes.patch(
+  "/api/teacher/submissions/:id/comment",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherCommentSubmission),
+);
+teacherRoutes.patch(
+  "/api/teacher/submissions/:id/grade",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherGradeSubmission),
+);
+teacherRoutes.get(
+  "/api/teacher/grades",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherGradesOverview),
+);
+teacherRoutes.get(
+  "/api/teacher/overview",
+  verifyToken,
+  requireRole([UserRole.teacher]),
+  asyncHandler(teacherController.teacherDashboardOverview),
+);
